@@ -5,6 +5,8 @@ const TAGS = [
   'Créativité', 'Ennui', 'Faim', 'Fatigue'
 ];
 
+let currentUser = null; // prénom de l'utilisateur
+
 let state = {
   running: false,
   intervalMin: 20,
@@ -15,10 +17,10 @@ let state = {
   entries: [],
   selectedTags: [],
   currentPingTime: null,
-  filter: 'day', // 'day' | 'week' | 'month'
+  filter: 'day',
 };
 
-// ── SAFE STORAGE (fallback si localStorage bloqué sur iOS file://) ──
+// ── SAFE STORAGE ──
 const _memStore = {};
 const store = {
   get(k) {
@@ -29,11 +31,16 @@ const store = {
   }
 };
 
+// Clé préfixée par l'utilisateur
+function key(k) {
+  return 'presence_' + (currentUser || 'default') + '_' + k;
+}
+
 function loadState() {
   try {
-    const saved = store.get('presence_entries');
+    const saved = store.get(key('entries'));
     if (saved) state.entries = JSON.parse(saved);
-    const conf = store.get('presence_config');
+    const conf = store.get(key('config'));
     if (conf) {
       const c = JSON.parse(conf);
       state.intervalMin = c.intervalMin || 20;
@@ -43,14 +50,12 @@ function loadState() {
 }
 
 function saveEntries() {
-  try {
-    store.set('presence_entries', JSON.stringify(state.entries));
-  } catch(e) {}
+  try { store.set(key('entries'), JSON.stringify(state.entries)); } catch(e) {}
 }
 
 function saveConfig() {
   try {
-    store.set('presence_config', JSON.stringify({
+    store.set(key('config'), JSON.stringify({
       intervalMin: state.intervalMin,
       variance: state.variance
     }));
@@ -522,21 +527,69 @@ function requestNotif() {
 function toggleTheme() {
   const isLight = document.documentElement.classList.toggle('light');
   document.getElementById('themeIcon').textContent = isLight ? '☾' : '☀';
-  try { store.set('presence_theme', isLight ? 'light' : 'dark'); } catch(e) {}
+  try { store.set(key('theme'), isLight ? 'light' : 'dark'); } catch(e) {}
 }
 
 function loadTheme() {
-  const saved = store.get('presence_theme');
+  const saved = store.get(key('theme'));
   if (saved === 'light') {
     document.documentElement.classList.add('light');
     document.getElementById('themeIcon').textContent = '☾';
+  } else {
+    document.documentElement.classList.remove('light');
+    document.getElementById('themeIcon').textContent = '☀';
   }
 }
 
+// ── ONBOARDING / USER ──
+function checkUser() {
+  const saved = store.get('presence_current_user');
+  if (saved) {
+    currentUser = saved;
+    startApp();
+  } else {
+    const ob = document.getElementById('view-onboarding');
+    ob.style.display = 'flex';
+    setTimeout(() => document.getElementById('nameInput').focus(), 100);
+  }
+}
+
+function confirmName() {
+  const input = document.getElementById('nameInput').value.trim();
+  if (!input) return;
+  currentUser = input.toLowerCase().replace(/\s+/g, '_');
+  store.set('presence_current_user', currentUser);
+  document.getElementById('view-onboarding').style.display = 'none';
+  startApp();
+}
+
+function switchUser() {
+  showConfirm('Changer d\'utilisateur ? Ta session en cours sera arrêtée.', () => {
+    stopSession();
+    store.set('presence_current_user', '');
+    currentUser = null;
+    state.entries = [];
+    document.getElementById('headerName').textContent = '';
+    document.getElementById('nameInput').value = '';
+    const ob = document.getElementById('view-onboarding');
+    ob.style.display = 'flex';
+    setTimeout(() => document.getElementById('nameInput').focus(), 100);
+  });
+}
+
+function startApp() {
+  // Affiche le prénom dans le header
+  const display = currentUser.replace(/_/g, ' ');
+  document.getElementById('headerName').textContent =
+    display.charAt(0).toUpperCase() + display.slice(1) + ' ↩';
+
+  loadState();
+  loadTheme();
+  document.getElementById('intervalDisplay').textContent = state.intervalMin;
+  document.getElementById('varianceToggle').classList.toggle('on', state.variance);
+  updateJournal();
+  checkNotifPermission();
+}
+
 // ── INIT ──
-loadState();
-loadTheme();
-document.getElementById('intervalDisplay').textContent = state.intervalMin;
-document.getElementById('varianceToggle').classList.toggle('on', state.variance);
-updateJournal();
-checkNotifPermission();
+checkUser();

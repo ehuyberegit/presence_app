@@ -13,8 +13,27 @@
 </head>
 <body>
 
+<!-- ONBOARDING -->
+<div id="view-onboarding" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:900;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;text-align:center">
+  <div class="title" style="font-size:32px;margin-bottom:12px">pré<span>sence</span></div>
+  <p style="color:var(--text-muted);font-size:15px;line-height:1.6;margin-bottom:48px;max-width:280px">Interruptions aléatoires pour observer tes pensées.</p>
+  <div style="width:100%;max-width:320px">
+    <div style="font-family:'DM Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;text-align:left">Ton prénom</div>
+    <input id="nameInput" type="text" placeholder="ex. Emile"
+      style="width:100%;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:2px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:18px;outline:none;caret-color:var(--accent);margin-bottom:16px"
+      onkeydown="if(event.key==='Enter') confirmName()">
+    <button onclick="confirmName()"
+      style="width:100%;padding:15px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--text);font-family:'DM Sans',sans-serif;font-size:17px;letter-spacing:0.08em;cursor:pointer;border-radius:2px">
+      Commencer →
+    </button>
+  </div>
+</div>
+
 <header>
-  <div class="title">pré<span>sence</span></div>
+  <div style="display:flex;flex-direction:column;gap:2px">
+    <div class="title">pré<span>sence</span></div>
+    <div id="headerName" style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.15em;color:var(--text-muted);cursor:pointer" onclick="switchUser()"></div>
+  </div>
   <div style="display:flex;align-items:center;gap:12px">
     <button class="theme-switch" id="themeSwitch" onclick="toggleTheme()" title="Changer le thème">
       <span id="themeIcon">☀</span>
