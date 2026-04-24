@@ -28,11 +28,31 @@ const DEFAULT_MOODS = [
   { emoji: '🤯', name: 'Overwhelmé' },
 ];
 
-const EMOJI_PALETTE = [
-  '😌','😊','🤩','😤','😟','😔','😴','🤔','😑','🤯','😀','😅',
-  '💼','❤️','🔮','📦','🫀','😰','☁️','🫥','✨','😒','🍕','🛋️',
-  '🎯','💡','🌊','🔥','⚡','🌙','☀️','🌱','🎵','📚','🏃','🧘',
-  '💬','👥','🏠','🌍','⏰','💰','🎮','🍺','☕','🚗','✈️','🎨',
+// Emoji palettes — distinct sets per context
+const EMOJI_MOODS = [
+  // Visages & émotions
+  '😌','😊','🙂','😀','😁','🤩','😎','🥰','😇','🤗',
+  '😑','😒','🙄','😤','😠','😡','🤬','😤','😾','💢',
+  '😟','😧','😨','😰','😱','😭','😢','😔','😞','😿',
+  '😴','🥱','😪','🤔','🤯','😵','🥴','😶','🫥','😐',
+  '🥳','😏','😈','🤑','🤡','🫠','😬','🫤','😮','😲',
+];
+
+const EMOJI_THOUGHTS = [
+  // Travail & productivité
+  '💼','💻','📊','📋','📝','✉️','📞','🗂️','🖊️','🔧',
+  // Relations & social
+  '❤️','👥','💬','🤝','👨‍👩‍👧','💑','🫂','👯','🗣️','💌',
+  // Temps & futur/passé
+  '🔮','📦','⏰','🕰️','📅','⌛','🔄','🗓️','🌅','🌄',
+  // Corps & santé
+  '🫀','🏃','🧘','💪','🍽️','😴','🤒','🛁','🧠','👁️',
+  // Lieu & déplacement
+  '🏠','☕','✈️','🚗','🌍','🏙️','🌿','🏖️','🏔️','🚶',
+  // Loisirs & créativité
+  '✨','🎵','🎨','📚','🎮','🍕','🍺','🎬','⚽','🎯',
+  // Nature & divers
+  '☁️','🌊','🔥','⚡','🌙','☀️','🌱','💡','🎲','🔑',
 ];
 
 const INTENSITY_LABELS = ['','À peine','Légère','Modérée','Forte','Très forte'];
@@ -50,7 +70,7 @@ let state = {
   countdownTimer: null,
   entries: [],
   selectedTags: [],
-  selectedMood: null,     // { emoji, name }
+  selectedMoods: [],      // [{ emoji, name }, ...]
   selectedIntensity: null,
   currentPingTime: null,
   filter: 'day',
@@ -264,7 +284,7 @@ function dismissPing() {
 
 function openCapture() {
   state.selectedTags = [];
-  state.selectedMood = null;
+  state.selectedMoods = [];
   state.selectedIntensity = null;
 
   // Thought tags
@@ -293,23 +313,26 @@ function openCapture() {
     el.className = 'tag';
     el.textContent = item.emoji + ' ' + item.name;
     el.onclick = () => {
-      // Deselect previous mood
-      moodGrid.querySelectorAll('.tag').forEach(t => t.classList.remove('selected'));
-      if (state.selectedMood && state.selectedMood.name === item.name) {
+      const already = state.selectedMoods.findIndex(m => m.name === item.name);
+      if (already >= 0) {
         // Toggle off
-        state.selectedMood = null;
-        state.selectedIntensity = null;
-        intensitySection.style.display = 'none';
-        document.querySelectorAll('.intensity-btn').forEach(b => b.classList.remove('selected'));
+        state.selectedMoods.splice(already, 1);
+        el.classList.remove('selected');
       } else {
+        // Toggle on
+        state.selectedMoods.push(item);
         el.classList.add('selected');
-        state.selectedMood = item;
+      }
+      // Show/hide intensity based on whether any mood is selected
+      if (state.selectedMoods.length > 0) {
+        const label = state.selectedMoods.map(m => m.emoji + ' ' + m.name).join(', ');
+        document.getElementById('intensity-label-text').textContent =
+          'Intensité de ce moment — ' + label;
+        intensitySection.style.display = 'block';
+      } else {
         state.selectedIntensity = null;
         document.querySelectorAll('.intensity-btn').forEach(b => b.classList.remove('selected'));
-        // Show intensity with label
-        document.getElementById('intensity-label-text').textContent =
-          'Intensité — à quel point tu te sens ' + item.emoji + ' ' + item.name + ' ?';
-        intensitySection.style.display = 'block';
+        intensitySection.style.display = 'none';
       }
     };
     moodGrid.appendChild(el);
@@ -346,12 +369,12 @@ function saveEntry() {
   const lieu = document.getElementById('lieuInput').value.trim();
   const personne = document.getElementById('personneInput').value.trim();
 
-  if (state.selectedTags.length === 0 && !text && !state.selectedMood) { skipEntry(); return; }
+  if (state.selectedTags.length === 0 && !text && state.selectedMoods.length === 0) { skipEntry(); return; }
 
   state.entries.unshift({
     time: state.currentPingTime.toISOString(),
     tags: [...state.selectedTags],
-    mood: state.selectedMood ? { ...state.selectedMood } : null,
+    moods: [...state.selectedMoods],
     intensity: state.selectedIntensity,
     lieu: lieu || null,
     personne: personne || null,
@@ -440,9 +463,9 @@ function updateJournal() {
     if (e.skipped) {
       html += `<div class="entry">${actions}<div class="entry-time">${timeStr}</div><div class="entry-skipped">— Ping ignoré</div></div>`;
     } else {
-      const moodHtml = e.mood
-        ? `<span style="font-size:13px;font-family:'DM Mono',monospace;color:var(--accent)">${e.mood.emoji} ${e.mood.name}${e.intensity ? ' · ' + e.intensity + '/5' : ''}</span>`
-        : '';
+      const moodHtml = (e.moods && e.moods.length)
+        ? `<span style="font-size:13px;font-family:'DM Mono',monospace;color:var(--accent)">${e.moods.map(m => m.emoji + ' ' + m.name).join('  ')}${e.intensity ? ' · ' + e.intensity + '/5' : ''}</span>`
+        : (e.mood ? `<span style="font-size:13px;font-family:'DM Mono',monospace;color:var(--accent)">${e.mood.emoji} ${e.mood.name}${e.intensity ? ' · ' + e.intensity + '/5' : ''}</span>` : '');
       const ctxHtml = [e.lieu, e.personne].filter(Boolean)
         .map(v => `<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">→ ${v}</span>`)
         .join(' ');
@@ -587,9 +610,32 @@ function openEditItem(listType, idx) {
 
 function buildEmojiPicker(selected) {
   const picker = document.getElementById('emoji-picker');
-  picker.innerHTML = EMOJI_PALETTE.map(e =>
-    `<div class="emoji-option${e === selected ? ' selected' : ''}" data-emoji="${e}" onclick="pickEmoji('${e}')">${e}</div>`
-  ).join('');
+  const palette = _modalMode === 'mood' ? EMOJI_MOODS : EMOJI_THOUGHTS;
+
+  // Build with category headings
+  const sections = _modalMode === 'mood' ? [
+    { label: 'Positif', emojis: EMOJI_MOODS.slice(0, 10) },
+    { label: 'Négatif actif', emojis: EMOJI_MOODS.slice(10, 20) },
+    { label: 'Négatif doux', emojis: EMOJI_MOODS.slice(20, 30) },
+    { label: 'Neutre / autre', emojis: EMOJI_MOODS.slice(30, 50) },
+  ] : [
+    { label: 'Travail', emojis: EMOJI_THOUGHTS.slice(0, 10) },
+    { label: 'Relations', emojis: EMOJI_THOUGHTS.slice(10, 20) },
+    { label: 'Temps', emojis: EMOJI_THOUGHTS.slice(20, 30) },
+    { label: 'Corps & santé', emojis: EMOJI_THOUGHTS.slice(30, 40) },
+    { label: 'Lieu', emojis: EMOJI_THOUGHTS.slice(40, 50) },
+    { label: 'Loisirs', emojis: EMOJI_THOUGHTS.slice(50, 60) },
+    { label: 'Divers', emojis: EMOJI_THOUGHTS.slice(60, 70) },
+  ];
+
+  picker.innerHTML = sections.map(s => `
+    <div class="emoji-section-label">${s.label}</div>
+    <div class="emoji-section-grid">
+      ${s.emojis.map(e =>
+        `<div class="emoji-option${e === selected ? ' selected' : ''}" data-emoji="${e}" onclick="pickEmoji('${e}')">${e}</div>`
+      ).join('')}
+    </div>
+  `).join('');
 }
 
 function pickEmoji(e) {
@@ -667,13 +713,24 @@ function renderAnalyse() {
   if (!el) return;
   const entries = getAnalyseEntries();
 
-  if (entries.length < 2) {
+  if (entries.length < 1) {
     el.innerHTML = `<div class="analyse-empty">Pas encore assez de données.<br><em>Continue à répondre aux pings.</em></div>`;
     return;
   }
 
   const total = entries.length;
-  const withMood = entries.filter(e => e.mood).length;
+  const skipped = state.entries.filter(e => {
+    if (!e.skipped) return false;
+    const d = new Date(e.time);
+    if (state.analyseFilter === 'day') return d.toDateString() === new Date().toDateString();
+    if (state.analyseFilter === 'week') {
+      const w = new Date(); w.setDate(w.getDate()-6); w.setHours(0,0,0,0); return d >= w;
+    }
+    return d.getMonth() === new Date().getMonth() && d.getFullYear() === new Date().getFullYear();
+  }).length;
+  const responseRate = total + skipped > 0 ? Math.round(total / (total + skipped) * 100) + '%' : '—';
+
+  const withMood = entries.filter(e => (e.moods && e.moods.length) || e.mood).length;
   const avgInt = entries.filter(e => e.intensity).length
     ? (entries.filter(e => e.intensity).reduce((s, e) => s + e.intensity, 0) / entries.filter(e => e.intensity).length).toFixed(1)
     : '—';
@@ -681,15 +738,23 @@ function renderAnalyse() {
   // Tag counts
   const tagCounts = {};
   entries.forEach(e => (e.tags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
-  const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
   // Mood counts
   const moodCounts = {};
-  entries.filter(e => e.mood).forEach(e => {
-    const k = e.mood.emoji + ' ' + e.mood.name;
-    moodCounts[k] = (moodCounts[k] || 0) + 1;
+  entries.forEach(e => {
+    const moods = e.moods && e.moods.length ? e.moods : (e.mood ? [e.mood] : []);
+    moods.forEach(m => {
+      const k = m.emoji + ' ' + m.name;
+      moodCounts[k] = (moodCounts[k] || 0) + 1;
+    });
   });
-  const sortedMoods = Object.entries(moodCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const sortedMoods = Object.entries(moodCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  // Intensity distribution
+  const intDist = [0,0,0,0,0];
+  entries.filter(e => e.intensity).forEach(e => intDist[e.intensity - 1]++);
+  const maxInt = Math.max(...intDist, 1);
 
   // Hour distribution
   const hourCounts = new Array(24).fill(0);
@@ -700,53 +765,92 @@ function renderAnalyse() {
   const lieuC = {}, personneC = {};
   entries.filter(e => e.lieu).forEach(e => { lieuC[e.lieu] = (lieuC[e.lieu] || 0) + 1; });
   entries.filter(e => e.personne).forEach(e => { personneC[e.personne] = (personneC[e.personne] || 0) + 1; });
-  const sortedLieux = Object.entries(lieuC).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const sortedPersonnes = Object.entries(personneC).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const sortedLieux = Object.entries(lieuC).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const sortedPersonnes = Object.entries(personneC).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
-  function barRow(label, count, max) {
-    return `<div class="analyse-bar-row">
-      <span class="analyse-bar-label">${label}</span>
-      <div class="analyse-bar-track"><div class="analyse-bar-fill" style="width:${Math.round(count/max*100)}%"></div></div>
-      <span class="analyse-bar-val">${count}</span>
+  function barRow(label, count, max, pct) {
+    const w = Math.round(count / max * 100);
+    const pctStr = pct ? Math.round(count / total * 100) + '%' : count;
+    return `<div class="ar-row">
+      <span class="ar-label">${label}</span>
+      <div class="ar-track"><div class="ar-fill" style="width:${w}%"></div></div>
+      <span class="ar-val">${pctStr}</span>
     </div>`;
   }
 
+  // Hour chart bars
+  const hourBar = (c, h) => {
+    const pct = Math.round(c / maxH * 100);
+    const showLabel = h % 6 === 0;
+    return `<div class="ah-col">
+      <div class="ah-bar" style="height:${pct}%"></div>
+      <span class="ah-lbl">${showLabel ? h + 'h' : ''}</span>
+    </div>`;
+  };
+
   el.innerHTML = `
-    <div class="analyse-stats-row">
-      <div class="analyse-stat"><div class="analyse-stat-num">${total}</div><div class="analyse-stat-label">Pings</div></div>
-      <div class="analyse-stat"><div class="analyse-stat-num">${withMood}</div><div class="analyse-stat-label">Avec mood</div></div>
-      <div class="analyse-stat"><div class="analyse-stat-num">${avgInt}</div><div class="analyse-stat-label">Intensité</div></div>
-    </div>
-
-    ${sortedTags.length ? `<div class="analyse-section">
-      <div class="analyse-section-title">Catégories de pensée</div>
-      ${sortedTags.map(([t, c]) => barRow(t, c, sortedTags[0][1])).join('')}
-    </div>` : ''}
-
-    ${sortedMoods.length ? `<div class="analyse-section">
-      <div class="analyse-section-title">Moods</div>
-      ${sortedMoods.map(([m, c]) => barRow(m, c, sortedMoods[0][1])).join('')}
-    </div>` : ''}
-
-    <div class="analyse-section">
-      <div class="analyse-section-title">Distribution horaire</div>
-      <div class="hour-bars">
-        ${hourCounts.map((c, h) => `
-          <div class="hour-bar-col">
-            <div class="hour-bar-fill" style="height:${Math.round(c/maxH*100)}%"></div>
-            ${h % 6 === 0 ? `<span class="hour-bar-lbl">${h}h</span>` : '<span class="hour-bar-lbl"></span>'}
-          </div>`).join('')}
+    <div class="ar-stats">
+      <div class="ar-stat">
+        <div class="ar-stat-num">${total}</div>
+        <div class="ar-stat-lbl">Pings répondus</div>
+      </div>
+      <div class="ar-stat">
+        <div class="ar-stat-num">${responseRate}</div>
+        <div class="ar-stat-lbl">Taux de réponse</div>
+      </div>
+      <div class="ar-stat">
+        <div class="ar-stat-num">${avgInt}</div>
+        <div class="ar-stat-lbl">Intensité moy.</div>
       </div>
     </div>
 
-    ${sortedLieux.length ? `<div class="analyse-section">
-      <div class="analyse-section-title">Lieux</div>
-      ${sortedLieux.map(([l, c]) => barRow(l, c, sortedLieux[0][1])).join('')}
+    ${sortedTags.length ? `
+    <div class="ar-section">
+      <div class="ar-title">CATÉGORIES DE PENSÉE</div>
+      ${sortedTags.map(([t, c]) => barRow(t, c, sortedTags[0][1], true)).join('')}
     </div>` : ''}
 
-    ${sortedPersonnes.length ? `<div class="analyse-section">
-      <div class="analyse-section-title">Personnes & contexte</div>
-      ${sortedPersonnes.map(([p, c]) => barRow(p, c, sortedPersonnes[0][1])).join('')}
+    ${sortedMoods.length ? `
+    <div class="ar-section">
+      <div class="ar-title">MOODS</div>
+      ${sortedMoods.map(([m, c]) => barRow(m, c, sortedMoods[0][1], true)).join('')}
+    </div>` : ''}
+
+    ${withMood > 0 ? `
+    <div class="ar-section">
+      <div class="ar-title">DISTRIBUTION DE L'INTENSITÉ</div>
+      <div class="ar-intensity-row">
+        ${intDist.map((c, i) => `
+          <div class="ar-int-col">
+            <div class="ar-int-bar-wrap">
+              <div class="ar-int-bar" style="height:${Math.round(c/maxInt*100)}%"></div>
+            </div>
+            <div class="ar-int-num">${c > 0 ? c : ''}</div>
+            <div class="ar-int-lbl">${i+1}</div>
+          </div>`).join('')}
+        <div style="flex:1;padding-left:12px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text-muted);line-height:2;align-self:center">
+          1 — À peine<br>3 — Modérée<br>5 — Très forte
+        </div>
+      </div>
+    </div>` : ''}
+
+    <div class="ar-section">
+      <div class="ar-title">DISTRIBUTION HORAIRE</div>
+      <div class="ah-chart">
+        ${hourCounts.map((c, h) => hourBar(c, h)).join('')}
+      </div>
+    </div>
+
+    ${sortedLieux.length ? `
+    <div class="ar-section">
+      <div class="ar-title">LIEUX</div>
+      ${sortedLieux.map(([l, c]) => barRow(l, c, sortedLieux[0][1], false)).join('')}
+    </div>` : ''}
+
+    ${sortedPersonnes.length ? `
+    <div class="ar-section">
+      <div class="ar-title">PERSONNES & CONTEXTE</div>
+      ${sortedPersonnes.map(([p, c]) => barRow(p, c, sortedPersonnes[0][1], false)).join('')}
     </div>` : ''}
   `;
 }
@@ -759,7 +863,8 @@ function exportData() {
     state.entries.forEach(e => {
       const d = new Date(e.time);
       const time = d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
-      const mood = e.mood ? e.mood.emoji + ' ' + e.mood.name : '';
+      const moodsArr = e.moods && e.moods.length ? e.moods : (e.mood ? [e.mood] : []);
+      const mood = moodsArr.map(m => m.emoji + ' ' + m.name).join('; ');
       lines.push(`"${time}","${(e.tags||[]).join('; ')}","${mood}","${e.intensity||''}","${e.lieu||''}","${e.personne||''}","${(e.text||'').replace(/"/g,'""')}","${e.skipped ? 'oui' : 'non'}"`);
     });
     const csv = lines.join('\n');

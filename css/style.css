@@ -1127,3 +1127,187 @@
 .corr-cell-val {
   font-family: 'DM Mono', monospace; font-size: 13px;
 }
+
+/* ── ANALYSE REDESIGN ── */
+
+.ar-stats {
+  display: flex;
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.ar-stat {
+  flex: 1;
+  padding: 20px 12px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.ar-stat-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 28px;
+  font-weight: 300;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.ar-stat-lbl {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ar-section {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ar-title {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.ar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ar-row:last-child { margin-bottom: 0; }
+
+.ar-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 120px;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ar-track {
+  flex: 1;
+  height: 3px;
+  background: var(--surface2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.22,1,0.36,1);
+}
+
+.ar-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: right;
+}
+
+/* Intensity distribution */
+.ar-intensity-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 80px;
+}
+
+.ar-int-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 36px;
+}
+
+.ar-int-bar-wrap {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  height: 48px;
+}
+
+.ar-int-bar {
+  width: 100%;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 1px 1px 0 0;
+  min-height: 2px;
+  transition: height 0.5s ease;
+}
+
+.ar-int-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  height: 12px;
+}
+
+.ar-int-lbl {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Hour chart */
+.ah-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 64px;
+}
+
+.ah-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.ah-bar {
+  width: 100%;
+  background: var(--accent-dim);
+  border-radius: 1px 1px 0 0;
+  min-height: 2px;
+  transition: height 0.5s ease;
+}
+
+.ah-lbl {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  color: var(--text-muted);
+  height: 10px;
+}
+
+/* ── EMOJI PICKER SECTIONS ── */
+.emoji-section-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 12px 0 6px;
+}
+.emoji-section-label:first-child { margin-top: 0; }
+
+.emoji-section-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
