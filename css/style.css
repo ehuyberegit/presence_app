@@ -267,8 +267,12 @@ input[type="text"]::placeholder { color: var(--ink-faint); font-style: italic; }
   font-family: var(--font-mono);
 }
 .valence-btn:hover { transform: scale(1.1); }
+.valence-btn.selected { border-width: 2px; }
+.valence-btn.pos.selected,
 .valence-btn.selected.pos { background: #DCFCE7; border-color: var(--mood-pos); color: var(--mood-pos); }
+.valence-btn.neu.selected,
 .valence-btn.selected.neu { background: #FEF3C7; border-color: var(--mood-neu); color: var(--mood-neu); }
+.valence-btn.neg.selected,
 .valence-btn.selected.neg { background: #FEE2E2; border-color: var(--mood-neg); color: var(--mood-neg); }
 
 .intensity-row { display: flex; gap: 6px; align-items: center; }
@@ -757,4 +761,156 @@ input[type="text"]::placeholder { color: var(--ink-faint); font-style: italic; }
   .two-col { grid-template-columns: 1fr; }
   .analyse-grid { grid-template-columns: 1fr; }
   .analyse-card.full { grid-column: 1; }
+}
+
+/* ── Timer sidebar ── */
+.timer-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.timer-status-line {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-mid);
+  margin-bottom: 4px;
+}
+.timer-status-line.active { color: var(--accent); }
+
+.timer-next {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--ink-faint);
+  margin-bottom: 10px;
+  min-height: 1rem;
+}
+
+.timer-select {
+  width: 100%;
+  background: var(--cream);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-mid);
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.timer-toggle {
+  width: 100%;
+  padding: 7px 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-mid);
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.04em;
+}
+.timer-toggle:hover { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+.timer-toggle.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* ── Ping alert overlay ── */
+.ping-alert {
+  position: fixed;
+  inset: 0;
+  background: rgba(28,25,23,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+.ping-alert.show {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.ping-alert-inner {
+  background: var(--cream);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2.5rem 2rem;
+  max-width: 340px;
+  width: 90%;
+  text-align: center;
+  transform: translateY(-10px);
+  transition: transform 0.25s;
+}
+.ping-alert.show .ping-alert-inner { transform: translateY(0); }
+
+.ping-alert-title {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+}
+
+.ping-alert-sub {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+}
+
+.ping-alert-btn {
+  padding: 0.7rem 1.75rem;
+  background: var(--ink);
+  color: var(--cream);
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ping-alert-btn:hover { background: var(--accent); }
+
+/* ── Mood fixes ── */
+.valence-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--cream);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+.valence-btn:hover { transform: scale(1.1); }
+
+/* Use IDs for unambiguous selected state */
+#vbtn-pos.selected { background: #DCFCE7; border-color: var(--mood-pos); color: var(--mood-pos); border-width: 2px; }
+#vbtn-neu.selected { background: #FEF3C7; border-color: var(--mood-neu); color: var(--mood-neu); border-width: 2px; }
+#vbtn-neg.selected { background: #FEE2E2; border-color: var(--mood-neg); color: var(--mood-neg); border-width: 2px; }
+
+.valence-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--ink-faint);
+  font-style: italic;
+  margin-left: 6px;
+}
+
+#ibtn-1.selected, #ibtn-2.selected, #ibtn-3.selected,
+#ibtn-4.selected, #ibtn-5.selected {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--cream);
 }

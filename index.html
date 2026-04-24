@@ -25,6 +25,19 @@
       <button class="nav-item" data-view="tags">Tags</button>
     </nav>
 
+    <div class="nav-section timer-section">
+      <div class="nav-label">Timer aléatoire</div>
+      <div class="timer-status-line" id="timer-status">Inactif</div>
+      <div class="timer-next" id="timer-next"></div>
+      <select id="timer-interval" class="timer-select">
+        <option value="15">~15 min</option>
+        <option value="30" selected>~30 min</option>
+        <option value="60">~60 min</option>
+        <option value="90">~90 min</option>
+      </select>
+      <button class="timer-toggle" id="timer-toggle">Démarrer</button>
+    </div>
+
     <div class="sidebar-footer" id="sidebar-stats"></div>
   </aside>
 
@@ -53,25 +66,29 @@
         <div class="form-row">
           <label class="form-label">Mood</label>
           <div class="mood-block">
+
             <div class="mood-row">
               <span class="mood-row-label">Valence</span>
-              <div class="valence-btns" id="valence-btns">
-                <button class="valence-btn pos" data-v="pos" title="Positif">+</button>
-                <button class="valence-btn neu" data-v="neu" title="Neutre">·</button>
-                <button class="valence-btn neg" data-v="neg" title="Négatif">−</button>
+              <div class="valence-btns">
+                <button class="valence-btn" id="vbtn-pos" data-v="pos" title="Positif">+</button>
+                <button class="valence-btn" id="vbtn-neu" data-v="neu" title="Neutre">·</button>
+                <button class="valence-btn" id="vbtn-neg" data-v="neg" title="Négatif">−</button>
               </div>
+              <span class="valence-label" id="valence-label"></span>
             </div>
+
             <div class="mood-row">
               <span class="mood-row-label">Intensité</span>
-              <div class="intensity-row" id="intensity-btns">
-                <button class="intensity-btn" data-i="1">1</button>
-                <button class="intensity-btn" data-i="2">2</button>
-                <button class="intensity-btn" data-i="3">3</button>
-                <button class="intensity-btn" data-i="4">4</button>
-                <button class="intensity-btn" data-i="5">5</button>
+              <div class="intensity-row">
+                <button class="intensity-btn" id="ibtn-1" data-i="1">1</button>
+                <button class="intensity-btn" id="ibtn-2" data-i="2">2</button>
+                <button class="intensity-btn" id="ibtn-3" data-i="3">3</button>
+                <button class="intensity-btn" id="ibtn-4" data-i="4">4</button>
+                <button class="intensity-btn" id="ibtn-5" data-i="5">5</button>
                 <span class="intensity-label" id="intensity-label">— pas encore sélectionné</span>
               </div>
             </div>
+
           </div>
         </div>
 
@@ -125,6 +142,15 @@
     </section>
 
   </main>
+</div>
+
+<!-- Ping alert overlay -->
+<div class="ping-alert" id="ping-alert">
+  <div class="ping-alert-inner">
+    <div class="ping-alert-title">Ping !</div>
+    <div class="ping-alert-sub">C'est le moment de noter ce qui te traverse.</div>
+    <button class="ping-alert-btn" id="ping-alert-btn">Noter maintenant →</button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
