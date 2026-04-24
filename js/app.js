@@ -1,595 +1,679 @@
-// ── STATE ──
-const TAGS = [
-  'Travail', 'Relations', 'Futur', 'Passé',
-  'Corps', 'Inquiétude', 'Rêverie', 'Vide',
-  'Créativité', 'Ennui', 'Faim', 'Fatigue'
+/* ─────────────────────────────────────────────
+   Présence — app.js
+   Journal de soi : pings, mood, tags, analyse
+───────────────────────────────────────────── */
+
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+const INTENSITY_LABELS = [
+  '', 'À peine perceptible', 'Légère', 'Modérée', 'Forte', 'Très intense'
 ];
 
-let currentUser = null; // prénom de l'utilisateur
+const VALENCE_LABELS = { pos: 'Positif', neu: 'Neutre', neg: 'Négatif' };
 
-let state = {
-  running: false,
-  intervalMin: 20,
-  variance: true,
-  nextPingAt: null,
-  pingTimer: null,
-  countdownTimer: null,
-  entries: [],
-  selectedTags: [],
-  currentPingTime: null,
-  filter: 'day',
-};
+const DEFAULT_TAGS = [
+  'Travail', 'Projets perso', 'Relationnel',
+  'Corps & santé', 'Finances', 'Futur', 'Passé', 'Rêverie'
+];
 
-// ── SAFE STORAGE ──
-const _memStore = {};
-const store = {
-  get(k) {
-    try { return localStorage.getItem(k); } catch(e) { return _memStore[k] ?? null; }
-  },
-  set(k, v) {
-    try { localStorage.setItem(k, v); } catch(e) { _memStore[k] = v; }
+const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
+
+// ── State ──────────────────────────────────────────────────────────────────
+
+let tags = load('presence_tags') || [...DEFAULT_TAGS];
+let pings = (load('presence_pings') || []).map(p => ({ ...p, ts: new Date(p.ts) }));
+let nextId = pings.length ? Math.max(...pings.map(p => p.id)) + 1 : 1;
+
+let selectedTag = null;
+let selectedValence = null;
+let selectedIntensity = null;
+
+const summaryCache = {};
+
+// ── Persistence ────────────────────────────────────────────────────────────
+
+function load(key) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
+}
+
+function persist() {
+  localStorage.setItem('presence_pings', JSON.stringify(pings));
+  localStorage.setItem('presence_tags', JSON.stringify(tags));
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+
+function fmtTime(ts) {
+  return ts.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDayLabel(ts) {
+  return ts.toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long'
+  });
+}
+
+function fmtDayKey(ts) {
+  return ts.toDateString();
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2300);
+}
+
+function updateDatetime() {
+  const el = document.getElementById('current-datetime');
+  if (!el) return;
+  el.textContent = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long',
+    year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function updateSidebar() {
+  const days = new Set(pings.map(p => fmtDayKey(p.ts))).size;
+  const el = document.getElementById('sidebar-stats');
+  if (el) {
+    el.innerHTML =
+      `${pings.length} ping${pings.length !== 1 ? 's' : ''}<br>` +
+      `${days} jour${days !== 1 ? 's' : ''}<br>` +
+      `${tags.length} tags`;
   }
-};
-
-// Clé préfixée par l'utilisateur
-function key(k) {
-  return 'presence_' + (currentUser || 'default') + '_' + k;
 }
 
-function loadState() {
-  try {
-    const saved = store.get(key('entries'));
-    if (saved) state.entries = JSON.parse(saved);
-    const conf = store.get(key('config'));
-    if (conf) {
-      const c = JSON.parse(conf);
-      state.intervalMin = c.intervalMin || 20;
-      state.variance = c.variance !== undefined ? c.variance : true;
-    }
-  } catch(e) {}
-}
+// ── Navigation ─────────────────────────────────────────────────────────────
 
-function saveEntries() {
-  try { store.set(key('entries'), JSON.stringify(state.entries)); } catch(e) {}
-}
-
-function saveConfig() {
-  try {
-    store.set(key('config'), JSON.stringify({
-      intervalMin: state.intervalMin,
-      variance: state.variance
-    }));
-  } catch(e) {}
-}
-
-// ── CLOCK ──
-function updateClock() {
-  const now = new Date();
-  const h = String(now.getHours()).padStart(2,'0');
-  const m = String(now.getMinutes()).padStart(2,'0');
-  document.getElementById('clock').textContent = h + ':' + m;
-
-  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
-  document.getElementById('dateDisplay').textContent =
-    days[now.getDay()] + ' ' + now.getDate() + ' ' + months[now.getMonth()];
-}
-
-setInterval(updateClock, 10000);
-updateClock();
-
-// ── INTERVAL CONFIG ──
-function changeInterval(delta) {
-  state.intervalMin = Math.max(5, Math.min(120, state.intervalMin + delta));
-  document.getElementById('intervalDisplay').textContent = state.intervalMin;
-  saveConfig();
-  if (state.running) restartTimer();
-}
-
-function toggleVariance() {
-  state.variance = !state.variance;
-  document.getElementById('varianceToggle').classList.toggle('on', state.variance);
-  saveConfig();
-  if (state.running) restartTimer();
-}
-
-// ── SESSION ──
-function toggleSession() {
-  if (state.running) stopSession();
-  else startSession();
-}
-
-function startSession() {
-  state.running = true;
-  document.getElementById('mainBtn').className = 'btn-main btn-stop';
-  document.getElementById('mainBtn').textContent = 'Arrêter la session';
-  document.getElementById('statusDot').classList.add('active');
-  document.getElementById('nextPingInfo').style.display = 'block';
-  schedulePing();
-}
-
-function stopSession() {
-  state.running = false;
-  clearTimeout(state.pingTimer);
-  clearInterval(state.countdownTimer);
-  state.nextPingAt = null;
-  document.getElementById('mainBtn').className = 'btn-main btn-start';
-  document.getElementById('mainBtn').textContent = 'Commencer la session';
-  document.getElementById('statusDot').classList.remove('active');
-  document.getElementById('nextPingInfo').style.display = 'none';
-}
-
-function restartTimer() {
-  clearTimeout(state.pingTimer);
-  clearInterval(state.countdownTimer);
-  schedulePing();
-}
-
-function schedulePing() {
-  let ms = state.intervalMin * 60 * 1000;
-  if (state.variance) {
-    const factor = 0.5 + Math.random(); // 0.5x to 1.5x
-    ms = Math.round(ms * factor);
-  }
-  state.nextPingAt = Date.now() + ms;
-  state.pingTimer = setTimeout(triggerPing, ms);
-  startCountdown();
-}
-
-function startCountdown() {
-  clearInterval(state.countdownTimer);
-  state.countdownTimer = setInterval(() => {
-    if (!state.nextPingAt) return;
-    const remaining = state.nextPingAt - Date.now();
-    if (remaining <= 0) { clearInterval(state.countdownTimer); return; }
-    const m = Math.floor(remaining / 60000);
-    const s = Math.floor((remaining % 60000) / 1000);
-    document.getElementById('nextPingCountdown').textContent =
-      (m > 0 ? m + ' min ' : '') + s + ' s';
-  }, 1000);
-}
-
-// ── PING ──
-function triggerPing() {
-  saveEntries();
-  state.currentPingTime = new Date();
-
-  // Try notification — desktop: works great. iOS: silently ignored.
-  try {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      const notif = new Notification('🔔 Présence — Moment de conscience', {
-        body: "Qu'est-ce qui occupait ton esprit à cet instant ?",
-        requireInteraction: false,
-        silent: false,
-      });
-      notif.onclick = () => {
-        window.focus();
-        notif.close();
-        // If overlay already closed (user was on page), re-open it
-        if (!document.getElementById('ping-overlay').classList.contains('show')) {
-          document.getElementById('ping-overlay').classList.add('show');
-        }
-      };
-      setTimeout(() => { try { notif.close(); } catch(e){} }, 8000);
-    }
-  } catch(e) {}
-
-  // Vibrate (Android + some browsers)
-  try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch(e) {}
-
-  // Visual flash
-  try { flashScreen(); } catch(e) {}
-
-  // Tab title blink (visible quand l'onglet est en arrière-plan)
-  try { blinkTitle(); } catch(e) {}
-
-  // Audio ping (works on iOS when tab is active)
-  try { playPingSound(); } catch(e) {}
-
-  // Show overlay
-  document.getElementById('ping-overlay').classList.add('show');
-  updateJournal();
-}
-
-function flashScreen() {
-  const el = document.getElementById('flash-overlay');
-  el.classList.remove('flashing');
-  // Force reflow
-  void el.offsetWidth;
-  el.classList.add('flashing');
-  el.addEventListener('animationend', () => el.classList.remove('flashing'), { once: true });
-}
-
-let _blinkInterval = null;
-function blinkTitle() {
-  clearInterval(_blinkInterval);
-  const original = 'Présence';
-  let on = true;
-  document.title = '🔔 PING !';
-  _blinkInterval = setInterval(() => {
-    document.title = on ? original : '🔔 PING !';
-    on = !on;
-  }, 800);
-  // Stop blinking when user interacts with the overlay
-  const stop = () => { clearInterval(_blinkInterval); document.title = original; };
-  document.getElementById('ping-overlay').addEventListener('click', stop, { once: true });
-}
-
-function playPingSound() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(880, ctx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
-  gain.gain.setValueAtTime(0.4, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.6);
-}
-
-function respondToPing() {
-  document.getElementById('ping-overlay').classList.remove('show');
-  openCapture();
-}
-
-function dismissPing() {
-  document.getElementById('ping-overlay').classList.remove('show');
-  // Log as skipped
-  state.entries.unshift({
-    time: state.currentPingTime.toISOString(),
-    tags: [],
-    text: '',
-    skipped: true,
-  });
-  saveEntries();
-  updateJournal();
-  if (state.running) schedulePing();
-}
-
-// ── CAPTURE ──
-function openCapture() {
-  // Build tags
-  const grid = document.getElementById('tagsGrid');
-  grid.innerHTML = '';
-  state.selectedTags = [];
-  TAGS.forEach(t => {
-    const el = document.createElement('div');
-    el.className = 'tag';
-    el.textContent = t;
-    el.onclick = () => {
-      el.classList.toggle('selected');
-      if (el.classList.contains('selected')) state.selectedTags.push(t);
-      else state.selectedTags = state.selectedTags.filter(x => x !== t);
-    };
-    grid.appendChild(el);
-  });
-
-  document.getElementById('freeText').value = '';
-
-  const t = state.currentPingTime;
-  document.getElementById('captureTime').textContent =
-    String(t.getHours()).padStart(2,'0') + ':' +
-    String(t.getMinutes()).padStart(2,'0') + ' · ' +
-    String(t.getDate()).padStart(2,'0') + '/' +
-    String(t.getMonth()+1).padStart(2,'0');
-
-  showView('capture');
-}
-
-function saveEntry() {
-  const text = document.getElementById('freeText').value.trim();
-  if (state.selectedTags.length === 0 && !text) {
-    skipEntry(); return;
-  }
-  state.entries.unshift({
-    time: state.currentPingTime.toISOString(),
-    tags: [...state.selectedTags],
-    text,
-    skipped: false,
-  });
-  saveEntries();
-  updateJournal();
-  showView('home');
-  if (state.running) schedulePing();
-}
-
-function skipEntry() {
-  state.entries.unshift({
-    time: state.currentPingTime || new Date(),
-    tags: [],
-    text: '',
-    skipped: true,
-  });
-  saveEntries();
-  updateJournal();
-  showView('home');
-  if (state.running) schedulePing();
-}
-
-// ── JOURNAL ──
-function getFilteredEntries() {
-  const now = new Date();
-  return state.entries
-    .map((e, i) => ({ ...e, _idx: i }))
-    .filter(e => {
-      const d = new Date(e.time);
-      if (state.filter === 'day') {
-        return d.toDateString() === now.toDateString();
-      } else if (state.filter === 'week') {
-        const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6);
-        weekAgo.setHours(0,0,0,0);
-        return d >= weekAgo;
-      } else { // month
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      }
-    });
-}
-
-function setFilter(f) {
-  state.filter = f;
-  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + f).classList.add('active');
-  const labels = { day: 'Aujourd\'hui', week: '7 derniers jours', month: 'Ce mois-ci' };
-  document.getElementById('journalTitle').textContent = labels[f];
-  updateJournal();
-}
-
-function updateJournal() {
-  const list = document.getElementById('entriesList');
-  const filtered = getFilteredEntries();
-
-  const total = filtered.length;
-  const answered = filtered.filter(e => !e.skipped).length;
-  const rate = total > 0 ? Math.round(answered / total * 100) + '%' : '—';
-
-  document.getElementById('statTotal').textContent = total;
-  document.getElementById('statAnswered').textContent = answered;
-  document.getElementById('statRate').textContent = rate;
-  document.getElementById('journalCount').textContent = total + ' entrée' + (total !== 1 ? 's' : '');
-
-  if (filtered.length === 0) {
-    const labels = { day: 'aujourd\'hui', week: 'cette semaine', month: 'ce mois-ci' };
-    list.innerHTML = `<div class="empty-journal">Aucune entrée ${labels[state.filter]}.<br><em>Démarre une session pour commencer.</em></div>`;
-    return;
-  }
-
-  // Group by date if week/month view
-  const showDate = state.filter !== 'day';
-  let html = '';
-  let lastDate = '';
-
-  filtered.forEach(e => {
-    const d = new Date(e.time);
-    const dateStr = d.toDateString();
-    const timeStr = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-
-    if (showDate && dateStr !== lastDate) {
-      lastDate = dateStr;
-      const days = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-      const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
-      const label = days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
-      html += `<div class="date-separator">${label}</div>`;
-    }
-
-    const actions = `
-      <div class="entry-actions">
-        ${!e.skipped ? `<button class="entry-action-btn edit" onclick="openEdit(${e._idx})">Éditer</button>` : ''}
-        <button class="entry-action-btn del" onclick="deleteEntry(${e._idx})">Suppr.</button>
-      </div>`;
-
-    if (e.skipped) {
-      html += `<div class="entry">${actions}<div class="entry-time">${timeStr}</div><div class="entry-skipped">— Ping ignoré</div></div>`;
-    } else {
-      html += `<div class="entry">${actions}
-        <div class="entry-time">${timeStr}</div>
-        ${e.tags && e.tags.length ? `<div class="entry-tags">${e.tags.map(t => `<div class="entry-tag">${t}</div>`).join('')}</div>` : ''}
-        ${e.text ? `<div class="entry-text">${e.text}</div>` : ''}
-      </div>`;
-    }
-  });
-
-  list.innerHTML = html;
-}
-
-// ── EDIT / DELETE ──
-let _editIdx = null;
-let _editSelectedTags = [];
-
-function openEdit(idx) {
-  _editIdx = idx;
-  const e = state.entries[idx];
-  _editSelectedTags = [...(e.tags || [])];
-
-  const grid = document.getElementById('editTagsGrid');
-  grid.innerHTML = '';
-  TAGS.forEach(t => {
-    const el = document.createElement('div');
-    el.className = 'tag' + (_editSelectedTags.includes(t) ? ' selected' : '');
-    el.textContent = t;
-    el.onclick = () => {
-      el.classList.toggle('selected');
-      if (el.classList.contains('selected')) _editSelectedTags.push(t);
-      else _editSelectedTags = _editSelectedTags.filter(x => x !== t);
-    };
-    grid.appendChild(el);
-  });
-
-  document.getElementById('editText').value = e.text || '';
-  document.getElementById('edit-modal').classList.add('show');
-}
-
-function closeEdit() {
-  document.getElementById('edit-modal').classList.remove('show');
-  _editIdx = null;
-}
-
-function saveEdit() {
-  if (_editIdx === null) return;
-  const text = document.getElementById('editText').value.trim();
-  state.entries[_editIdx] = {
-    ...state.entries[_editIdx],
-    tags: [..._editSelectedTags],
-    text,
-    skipped: false,
-  };
-  saveEntries();
-  updateJournal();
-  closeEdit();
-}
-
-function deleteEntry(idx) {
-  showConfirm('Supprimer cette entrée ?', () => {
-    state.entries.splice(idx, 1);
-    saveEntries();
-    updateJournal();
-  });
-}
-
-// ── CUSTOM CONFIRM (confirm() bloqué sur iOS file://) ──
-function showConfirm(message, onOk) {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:700;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
-  overlay.innerHTML = `
-    <div style="background:#111;border:1px solid #333;border-radius:2px;padding:28px 24px;margin:24px;max-width:320px;width:100%;text-align:center">
-      <div style="font-size:16px;color:#e8e4dc;margin-bottom:24px;line-height:1.5">${message}</div>
-      <div style="display:flex;gap:10px">
-        <button id="confirmNo" style="flex:1;padding:12px;background:transparent;border:1px solid #333;color:#666;font-family:DM Sans,sans-serif;font-size:15px;cursor:pointer;border-radius:2px">Annuler</button>
-        <button id="confirmYes" style="flex:1;padding:12px;background:#5a2020;border:1px solid #8b3a3a;color:#e8e4dc;font-family:DM Sans,sans-serif;font-size:15px;cursor:pointer;border-radius:2px">Supprimer</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  overlay.querySelector('#confirmNo').onclick = () => document.body.removeChild(overlay);
-  overlay.querySelector('#confirmYes').onclick = () => { document.body.removeChild(overlay); onOk(); };
-}
-
-// ── EXPORT ──
-function exportData() {
-  try {
-    const lines = ['Heure,Tags,Note,Ignoré'];
-    state.entries.forEach(e => {
-      const d = new Date(e.time);
-      const time = d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
-      lines.push(`"${time}","${(e.tags||[]).join('; ')}","${(e.text||'').replace(/"/g,'""')}","${e.skipped ? 'oui' : 'non'}"`);
-    });
-    const csv = lines.join('\n');
-    try {
-      const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'presence_' + new Date().toISOString().slice(0,10) + '.csv';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    } catch(e2) {
-      // Fallback iOS : ouvre dans une nouvelle fenêtre
-      const w = window.open();
-      if (w) { w.document.write('<pre>' + csv + '</pre>'); }
-    }
-  } catch(e) {}
-}
-
-// ── NAVIGATION ──
-function showView(name) {
+function showView(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
 
-  const navBar = document.getElementById('mainNav');
+  const view = document.getElementById('view-' + viewId);
+  if (view) view.classList.add('active');
 
-  if (name === 'capture') {
-    document.getElementById('view-capture').classList.add('active');
-    navBar.style.display = 'none';
-  } else {
-    navBar.style.display = 'flex';
-    document.getElementById('view-' + name).classList.add('active');
-    const navBtn = document.getElementById('nav-' + name);
-    if (navBtn) navBtn.classList.add('active');
+  const btn = document.querySelector(`.nav-item[data-view="${viewId}"]`);
+  if (btn) btn.classList.add('active');
+
+  if (viewId === 'ping')    renderTagSelector();
+  if (viewId === 'journal') renderJournal();
+  if (viewId === 'analyse') renderAnalyse();
+  if (viewId === 'tags')    renderTags();
+
+  updateSidebar();
+}
+
+// ── Tag selector (new ping form) ───────────────────────────────────────────
+
+function renderTagSelector() {
+  const container = document.getElementById('tag-selector');
+  if (!container) return;
+
+  container.innerHTML = tags.map(t => {
+    const sel = selectedTag === t ? ' selected' : '';
+    return `<button class="tag-btn${sel}" data-tag="${t}">${t}</button>`;
+  }).join('') +
+    `<button class="tag-btn add-tag" data-view="tags">+ gérer</button>`;
+}
+
+function selectTag(t) {
+  selectedTag = selectedTag === t ? null : t;
+  renderTagSelector();
+}
+
+// ── Valence & intensity ────────────────────────────────────────────────────
+
+function selectValence(v) {
+  selectedValence = selectedValence === v ? null : v;
+  document.querySelectorAll('.valence-btn').forEach(b => b.classList.remove('selected'));
+  if (selectedValence) {
+    const btn = document.querySelector(`.valence-btn[data-v="${v}"]`);
+    if (btn) btn.classList.add('selected');
   }
 }
 
-// ── NOTIFICATIONS ──
-function checkNotifPermission() {
-  const container = document.getElementById('notifBannerContainer');
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'granted') { container.innerHTML = ''; return; }
-  if (Notification.permission === 'denied') {
-    container.innerHTML = `<div class="notif-banner"><span>🔕</span> Notifications bloquées — active-les dans les réglages du navigateur pour recevoir les pings même quand l'app est en arrière-plan.</div>`;
+function selectIntensity(i) {
+  selectedIntensity = selectedIntensity === i ? null : i;
+  document.querySelectorAll('.intensity-btn').forEach(b => b.classList.remove('selected'));
+  const label = document.getElementById('intensity-label');
+  if (selectedIntensity) {
+    const btn = document.querySelector(`.intensity-btn[data-i="${i}"]`);
+    if (btn) btn.classList.add('selected');
+    if (label) label.textContent = INTENSITY_LABELS[i];
+  } else {
+    if (label) label.textContent = '— pas encore sélectionné';
+  }
+}
+
+// ── Add ping ───────────────────────────────────────────────────────────────
+
+function addPing() {
+  const note     = document.getElementById('noteInput').value.trim();
+  const lieu     = document.getElementById('lieuInput').value.trim();
+  const personne = document.getElementById('personneInput').value.trim();
+
+  const ping = {
+    id:        nextId++,
+    ts:        new Date(),
+    note:      note || null,
+    tag:       selectedTag,
+    valence:   selectedValence,
+    intensity: selectedIntensity,
+    lieu:      lieu || null,
+    personne:  personne || null,
+  };
+
+  pings.unshift(ping);
+  persist();
+
+  // Reset form
+  document.getElementById('noteInput').value    = '';
+  document.getElementById('lieuInput').value    = '';
+  document.getElementById('personneInput').value = '';
+  selectedTag = null;
+  selectedValence = null;
+  selectedIntensity = null;
+
+  document.querySelectorAll('.valence-btn').forEach(b => b.classList.remove('selected'));
+  document.querySelectorAll('.intensity-btn').forEach(b => b.classList.remove('selected'));
+  const lbl = document.getElementById('intensity-label');
+  if (lbl) lbl.textContent = '— pas encore sélectionné';
+
+  renderTagSelector();
+  updateSidebar();
+  toast('Ping enregistré ✓');
+}
+
+// ── Delete ping ────────────────────────────────────────────────────────────
+
+function deletePing(id) {
+  pings = pings.filter(p => p.id !== id);
+  persist();
+  renderJournal();
+  updateSidebar();
+}
+
+// ── Ping card HTML ─────────────────────────────────────────────────────────
+
+function pipsHTML(intensity) {
+  return `<span class="intensity-pips">` +
+    Array.from({ length: 5 }, (_, i) =>
+      `<span class="pip${i < intensity ? ' filled' : ''}"></span>`
+    ).join('') +
+    `</span>`;
+}
+
+function pingCardHTML(p) {
+  const tagHtml = p.tag
+    ? `<span class="ping-tag">${p.tag}</span>`
+    : '';
+
+  const valHtml = p.valence
+    ? `<span class="mood-badge">
+         <span class="mood-dot ${p.valence}"></span>
+         ${VALENCE_LABELS[p.valence]}
+       </span>`
+    : '';
+
+  const intHtml = p.intensity
+    ? `<span class="mood-badge">
+         ${pipsHTML(p.intensity)}
+         &thinsp;${p.intensity}/5
+       </span>`
+    : '';
+
+  const ctxHtml = [
+    p.lieu     ? `<span class="ctx-item">${p.lieu}</span>`     : '',
+    p.personne ? `<span class="ctx-item">${p.personne}</span>` : '',
+  ].filter(Boolean).join('');
+
+  return `
+    <div class="ping-card">
+      <span class="ping-time">${fmtTime(p.ts)}</span>
+      <div class="ping-content">
+        <div class="ping-meta">${tagHtml}${valHtml}${intHtml}</div>
+        ${p.note ? `<div class="ping-note">&ldquo;${p.note}&rdquo;</div>` : ''}
+        ${ctxHtml ? `<div class="ping-context">${ctxHtml}</div>` : ''}
+      </div>
+      <button class="ping-del" data-id="${p.id}">×</button>
+    </div>`;
+}
+
+// ── Journal ────────────────────────────────────────────────────────────────
+
+function renderJournal() {
+  const feed = document.getElementById('journal-feed');
+  const countEl = document.getElementById('journal-count');
+  if (!feed) return;
+
+  if (countEl) countEl.textContent = `${pings.length} ping${pings.length !== 1 ? 's' : ''}`;
+
+  if (!pings.length) {
+    feed.innerHTML = `<div class="empty-state">Aucun ping encore.<br>Commence à noter ce qui te traverse.</div>`;
     return;
   }
-  container.innerHTML = `<div class="notif-banner" onclick="requestNotif()"><span>🔔</span> Autoriser les notifications pour être pingé en arrière-plan</div>`;
-}
 
-function requestNotif() {
-  Notification.requestPermission().then(() => checkNotifPermission());
-}
-
-// ── THEME ──
-function toggleTheme() {
-  const isLight = document.documentElement.classList.toggle('light');
-  document.getElementById('themeIcon').textContent = isLight ? '☾' : '☀';
-  try { store.set(key('theme'), isLight ? 'light' : 'dark'); } catch(e) {}
-}
-
-function loadTheme() {
-  const saved = store.get(key('theme'));
-  if (saved === 'light') {
-    document.documentElement.classList.add('light');
-    document.getElementById('themeIcon').textContent = '☾';
-  } else {
-    document.documentElement.classList.remove('light');
-    document.getElementById('themeIcon').textContent = '☀';
-  }
-}
-
-// ── ONBOARDING / USER ──
-function checkUser() {
-  const saved = store.get('presence_current_user');
-  if (saved) {
-    currentUser = saved;
-    startApp();
-  } else {
-    const ob = document.getElementById('view-onboarding');
-    ob.style.display = 'flex';
-    setTimeout(() => document.getElementById('nameInput').focus(), 100);
-  }
-}
-
-function confirmName() {
-  const input = document.getElementById('nameInput').value.trim();
-  if (!input) return;
-  currentUser = input.toLowerCase().replace(/\s+/g, '_');
-  store.set('presence_current_user', currentUser);
-  document.getElementById('view-onboarding').style.display = 'none';
-  startApp();
-}
-
-function switchUser() {
-  showConfirm('Changer d\'utilisateur ? Ta session en cours sera arrêtée.', () => {
-    stopSession();
-    store.set('presence_current_user', '');
-    currentUser = null;
-    state.entries = [];
-    document.getElementById('headerName').textContent = '';
-    document.getElementById('nameInput').value = '';
-    const ob = document.getElementById('view-onboarding');
-    ob.style.display = 'flex';
-    setTimeout(() => document.getElementById('nameInput').focus(), 100);
+  // Group by day
+  const groups = {};
+  pings.forEach(p => {
+    const k = fmtDayKey(p.ts);
+    if (!groups[k]) groups[k] = { label: fmtDayLabel(p.ts), key: k, pings: [] };
+    groups[k].pings.push(p);
   });
+
+  feed.innerHTML = Object.values(groups).map(g => {
+    const safeKey = g.key.replace(/\s/g, '_');
+    const cached  = summaryCache[g.key];
+    const summaryBox = cached
+      ? `<div class="day-summary-box">${cached}</div>`
+      : '';
+
+    return `
+      <div class="day-group" id="group-${safeKey}">
+        <div class="day-heading">
+          <span>${g.label}</span>
+          <button class="summary-btn" data-daykey="${g.key}" id="sumBtn-${safeKey}">
+            ${cached ? 'Regénérer le résumé' : 'Résumé du jour'}
+          </button>
+        </div>
+        ${summaryBox}
+        ${g.pings.map(pingCardHTML).join('')}
+      </div>`;
+  }).join('');
 }
 
-function startApp() {
-  // Affiche le prénom dans le header
-  const display = currentUser.replace(/_/g, ' ');
-  document.getElementById('headerName').textContent =
-    display.charAt(0).toUpperCase() + display.slice(1) + ' ↩';
+// ── AI daily summary ───────────────────────────────────────────────────────
 
-  loadState();
-  loadTheme();
-  document.getElementById('intervalDisplay').textContent = state.intervalMin;
-  document.getElementById('varianceToggle').classList.toggle('on', state.variance);
-  updateJournal();
-  checkNotifPermission();
+async function generateSummary(dayKey) {
+  const safeKey = dayKey.replace(/\s/g, '_');
+  const btn = document.getElementById(`sumBtn-${safeKey}`);
+  if (btn) { btn.textContent = '...'; btn.classList.add('loading'); }
+
+  const dayPings = pings.filter(p => fmtDayKey(p.ts) === dayKey);
+  const formatted = dayPings.map(p => {
+    const parts = [
+      `${fmtTime(p.ts)}`,
+      `Tag: ${p.tag || '—'}`,
+      `Valence: ${p.valence ? VALENCE_LABELS[p.valence] : '—'}`,
+      `Intensité: ${p.intensity ? p.intensity + '/5' : '—'}`,
+      p.lieu     ? `Lieu: ${p.lieu}`         : null,
+      p.personne ? `Personne: ${p.personne}` : null,
+      p.note     ? `Note: "${p.note}"`       : null,
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }).join('\n');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 1000,
+        system: `Tu es un miroir bienveillant et honnête. Tu lis les pings d'une journée d'un journal de présence et tu rédiges un résumé narratif court (4 à 6 phrases). Ton ton est sobre, intime, direct — pas de compliments, pas de morale. Tu observes ce qui domine, ce qui contraste, ce qui revient. Tu écris à la deuxième personne du singulier, en français.`,
+        messages: [{
+          role: 'user',
+          content: `Voici mes pings du jour :\n\n${formatted}\n\nFais un résumé de cette journée.`
+        }]
+      })
+    });
+
+    const data = await res.json();
+    const text = data.content?.find(b => b.type === 'text')?.text
+      || 'Impossible de générer le résumé.';
+
+    summaryCache[dayKey] = text;
+    renderJournal();
+
+  } catch (err) {
+    console.error('Summary error:', err);
+    if (btn) {
+      btn.textContent = 'Erreur — réessayer';
+      btn.classList.remove('loading');
+    }
+  }
 }
 
-// ── INIT ──
-checkUser();
+// ── Analyse ────────────────────────────────────────────────────────────────
+
+function renderAnalyse() {
+  const el = document.getElementById('analyse-content');
+  if (!el) return;
+
+  if (pings.length < 2) {
+    el.innerHTML = `<div class="empty-state">Pas assez de données encore.<br>Continue à pinger pour voir l'analyse apparaître.</div>`;
+    return;
+  }
+
+  const total = pings.length;
+  const days  = new Set(pings.map(p => fmtDayKey(p.ts))).size;
+  const avg   = (total / days).toFixed(1);
+
+  // Tag counts
+  const tagCounts = {};
+  tags.forEach(t => { tagCounts[t] = 0; });
+  pings.forEach(p => { if (p.tag) tagCounts[p.tag] = (tagCounts[p.tag] || 0) + 1; });
+  const sortedTags = Object.entries(tagCounts).filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1]);
+
+  // Valence counts
+  const valCounts = { pos: 0, neu: 0, neg: 0 };
+  const pingsWithVal = pings.filter(p => p.valence);
+  pingsWithVal.forEach(p => { valCounts[p.valence]++; });
+
+  // Average intensity
+  const pingsWithInt = pings.filter(p => p.intensity);
+  const avgInt = pingsWithInt.length
+    ? (pingsWithInt.reduce((s, p) => s + p.intensity, 0) / pingsWithInt.length).toFixed(1)
+    : '—';
+
+  // Hour distribution
+  const hourCounts = new Array(24).fill(0);
+  pings.forEach(p => { hourCounts[p.ts.getHours()]++; });
+  const maxHour = Math.max(...hourCounts, 1);
+
+  // Tag × mood correlations
+  const tagMood = {};
+  sortedTags.forEach(([t]) => {
+    const tp = pings.filter(p => p.tag === t && p.valence);
+    if (!tp.length) return;
+    const pos = tp.filter(p => p.valence === 'pos').length;
+    const neg = tp.filter(p => p.valence === 'neg').length;
+    tagMood[t] = pos > neg ? 'pos' : neg > pos ? 'neg' : 'neu';
+  });
+
+  // Lieux
+  const lieuCounts = {};
+  pings.filter(p => p.lieu).forEach(p => {
+    lieuCounts[p.lieu] = (lieuCounts[p.lieu] || 0) + 1;
+  });
+  const sortedLieux = Object.entries(lieuCounts).sort((a, b) => b[1] - a[1]);
+
+  // Personnes
+  const personneCounts = {};
+  pings.filter(p => p.personne).forEach(p => {
+    personneCounts[p.personne] = (personneCounts[p.personne] || 0) + 1;
+  });
+  const sortedPersonnes = Object.entries(personneCounts).sort((a, b) => b[1] - a[1]);
+
+  // ── HTML ──
+  const valTotal = pingsWithVal.length || 1;
+
+  const tagBars = sortedTags.slice(0, 8).map(([t, c]) =>
+    `<div class="bar-row">
+      <span class="bar-label">${t}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c / total * 100)}%"></div></div>
+      <span class="bar-val">${c}</span>
+    </div>`
+  ).join('');
+
+  const valBars = [['Positif','pos',valCounts.pos], ['Neutre','neu',valCounts.neu], ['Négatif','neg',valCounts.neg]]
+    .map(([label, v, c]) =>
+      `<div class="bar-row">
+        <span class="bar-label">${label}</span>
+        <div class="bar-track"><div class="bar-fill ${v}" style="width:${Math.round(c / valTotal * 100)}%"></div></div>
+        <span class="bar-val">${c}</span>
+      </div>`
+    ).join('');
+
+  const hourBars = hourCounts.map((c, h) =>
+    `<div class="hour-col">
+      <div class="hour-bar" style="height:${Math.round(c / maxHour * 100)}%"></div>
+      ${h % 3 === 0 ? `<span class="hour-lbl">${h}h</span>` : '<span class="hour-lbl"></span>'}
+    </div>`
+  ).join('');
+
+  const corrCells = Object.entries(tagMood).map(([t, mood]) => {
+    const label = mood === 'pos' ? '+ bien' : mood === 'neg' ? '− pesant' : '≈ neutre';
+    return `<div class="corr-cell">
+      <div class="corr-tag">${t}</div>
+      <div class="corr-val ${mood}">${label}</div>
+    </div>`;
+  }).join('');
+
+  const lieuBars = sortedLieux.slice(0, 5).map(([l, c]) =>
+    `<div class="bar-row">
+      <span class="bar-label">${l}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c / total * 100)}%"></div></div>
+      <span class="bar-val">${c}</span>
+    </div>`
+  ).join('');
+
+  const personneBars = sortedPersonnes.slice(0, 5).map(([p, c]) =>
+    `<div class="bar-row">
+      <span class="bar-label">${p}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c / total * 100)}%"></div></div>
+      <span class="bar-val">${c}</span>
+    </div>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="analyse-grid">
+
+      <div class="analyse-card">
+        <div class="analyse-title">Vue d'ensemble</div>
+        <div class="stat-row">
+          <div class="stat-big">${total}</div>
+          <div class="stat-label">pings au total</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-big" style="font-size:1.4rem">${avg}</div>
+          <div class="stat-label">pings par jour</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-big" style="font-size:1.4rem">${avgInt}</div>
+          <div class="stat-label">intensité moyenne</div>
+        </div>
+      </div>
+
+      <div class="analyse-card">
+        <div class="analyse-title">Valence globale</div>
+        ${valBars}
+        <div style="margin-top:0.75rem;font-family:var(--font-mono);font-size:0.6rem;color:var(--ink-faint)">
+          ${pingsWithVal.length} pings avec valence sur ${total}
+        </div>
+      </div>
+
+      <div class="analyse-card full">
+        <div class="analyse-title">Tags — répartition</div>
+        ${tagBars || '<div class="empty-state" style="padding:1rem 0">Aucun tag utilisé.</div>'}
+      </div>
+
+      <div class="analyse-card full">
+        <div class="analyse-title">Mood dominant par tag</div>
+        ${corrCells
+          ? `<div class="corr-grid">${corrCells}</div>`
+          : '<div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--ink-faint)">Pas assez de données avec valence.</div>'}
+      </div>
+
+      <div class="analyse-card full">
+        <div class="analyse-title">Distribution horaire</div>
+        <div class="hour-chart">${hourBars}</div>
+      </div>
+
+      ${sortedLieux.length ? `
+      <div class="analyse-card">
+        <div class="analyse-title">Lieux</div>
+        ${lieuBars}
+      </div>` : ''}
+
+      ${sortedPersonnes.length ? `
+      <div class="analyse-card">
+        <div class="analyse-title">Personnes & contexte</div>
+        ${personneBars}
+      </div>` : ''}
+
+    </div>
+
+    <div class="export-row">
+      <button class="export-btn" id="exportJSON">Exporter JSON</button>
+      <button class="export-btn" id="exportCSV">Exporter CSV</button>
+    </div>
+  `;
+
+  document.getElementById('exportJSON')?.addEventListener('click', exportJSON);
+  document.getElementById('exportCSV')?.addEventListener('click', exportCSV);
+}
+
+// ── Tags management ────────────────────────────────────────────────────────
+
+function renderTags() {
+  const list = document.getElementById('tags-list');
+  if (!list) return;
+
+  const tagCounts = {};
+  pings.forEach(p => { if (p.tag) tagCounts[p.tag] = (tagCounts[p.tag] || 0) + 1; });
+
+  list.innerHTML = tags.map(t =>
+    `<div class="tag-row">
+      <span class="tag-row-name">${t}</span>
+      <span class="tag-row-count">${tagCounts[t] || 0} ping${(tagCounts[t] || 0) !== 1 ? 's' : ''}</span>
+      <button class="del-btn" data-tag="${t}">Supprimer</button>
+    </div>`
+  ).join('');
+}
+
+function createTag() {
+  const input = document.getElementById('newTagInput');
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name || tags.includes(name)) return;
+  tags.push(name);
+  persist();
+  input.value = '';
+  renderTags();
+  renderTagSelector();
+  toast(`Tag "${name}" créé`);
+}
+
+function deleteTag(t) {
+  if (!confirm(`Supprimer le tag "${t}" ? Il sera retiré de tous les pings existants.`)) return;
+  tags = tags.filter(x => x !== t);
+  pings.forEach(p => { if (p.tag === t) p.tag = null; });
+  persist();
+  renderTags();
+  renderTagSelector();
+  toast(`Tag "${t}" supprimé`);
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────
+
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(pings, null, 2)], { type: 'application/json' });
+  triggerDownload(blob, `presence_${isoDate()}.json`);
+}
+
+function exportCSV() {
+  const header = 'datetime,tag,valence,intensity,lieu,personne,note';
+  const rows = pings.map(p =>
+    [
+      p.ts.toISOString(),
+      p.tag       || '',
+      p.valence   || '',
+      p.intensity || '',
+      p.lieu      || '',
+      p.personne  || '',
+      `"${(p.note || '').replace(/"/g, '""')}"`,
+    ].join(',')
+  );
+  const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' });
+  triggerDownload(blob, `presence_${isoDate()}.csv`);
+}
+
+function triggerDownload(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function isoDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
+// ── Event delegation ───────────────────────────────────────────────────────
+
+document.addEventListener('click', e => {
+  const target = e.target;
+
+  // Nav items
+  if (target.matches('.nav-item[data-view]')) {
+    showView(target.dataset.view);
+    return;
+  }
+
+  // Tag selector (new ping form)
+  if (target.matches('#tag-selector .tag-btn[data-tag]')) {
+    selectTag(target.dataset.tag);
+    return;
+  }
+
+  // "Gérer" shortcut in tag selector
+  if (target.matches('#tag-selector .add-tag')) {
+    showView('tags');
+    return;
+  }
+
+  // Valence buttons
+  if (target.matches('.valence-btn[data-v]')) {
+    selectValence(target.dataset.v);
+    return;
+  }
+
+  // Intensity buttons
+  if (target.matches('.intensity-btn[data-i]')) {
+    selectIntensity(parseInt(target.dataset.i, 10));
+    return;
+  }
+
+  // Submit ping
+  if (target.matches('#submitPing')) {
+    addPing();
+    return;
+  }
+
+  // Delete ping
+  if (target.matches('.ping-del[data-id]')) {
+    deletePing(parseInt(target.dataset.id, 10));
+    return;
+  }
+
+  // Daily summary
+  if (target.matches('.summary-btn[data-daykey]')) {
+    generateSummary(target.dataset.daykey);
+    return;
+  }
+
+  // Delete tag
+  if (target.matches('.del-btn[data-tag]')) {
+    deleteTag(target.dataset.tag);
+    return;
+  }
+
+  // Create tag
+  if (target.matches('#createTagBtn')) {
+    createTag();
+    return;
+  }
+});
+
+// Enter key in new tag input
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.matches('#newTagInput')) {
+    createTag();
+  }
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+
+function init() {
+  updateDatetime();
+  setInterval(updateDatetime, 30_000);
+  updateSidebar();
+  renderTagSelector();
+}
+
+init();

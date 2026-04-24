@@ -1,47 +1,37 @@
-# Présence
+# Présence — Journal de soi
 
-> Interruptions aléatoires pour observer tes pensées — inspiré de l'Experience Sampling Method de Csikszentmihalyi.
-
-## C'est quoi ?
-
-Une webapp minimaliste qui te bipe à intervalles aléatoires pendant la journée. À chaque ping, tu notes ce qui occupait ton esprit : tags rapides + texte libre. L'idée est de développer une conscience de ses patterns de pensées au fil du temps.
-
-## Fonctionnalités
-
-- ⏱ Intervalles configurables (5–120 min) avec variance aléatoire ±50%
-- 🔔 Notifications système desktop (Chrome / Firefox)
-- 🔊 Son + flash visuel + clignotement de l'onglet au moment du ping
-- 🏷 Tags rapides + texte libre pour chaque entrée
-- 📓 Journal avec filtres Jour / Semaine / Mois
-- ✏️ Entrées modifiables et supprimables
-- 📊 Stats en temps réel (taux de réponse)
-- 🌗 Thème sombre / clair
-- 💾 Données stockées localement dans le navigateur (localStorage)
-- 📤 Export CSV
-
-## Utilisation
-
-Ouvre simplement `index.html` dans ton navigateur, ou accède à la version hébergée :
-
-**→ [ton-pseudo.github.io/presence]()**
-
-Chaque utilisateur a ses propres données stockées localement sur son appareil.
+Une application de journaling par pings aléatoires, pour capturer ce qui te traverse en temps réel.
 
 ## Structure
 
 ```
-presence/
-├── index.html       # Structure HTML
+presence_app/
+├── index.html        # Shell HTML
 ├── css/
-│   └── style.css    # Styles et thèmes
+│   └── style.css     # Tous les styles
 ├── js/
-│   └── app.js       # Logique de l'application
+│   └── app.js        # Toute la logique
 └── README.md
 ```
 
-## Déploiement (GitHub Pages)
+## Fonctionnalités
 
-1. Fork ou clone ce repo
-2. Va dans **Settings → Pages**
-3. Source : `main` / `/ (root)`
-4. Ton lien : `https://[pseudo].github.io/[nom-repo]`
+- **Nouveau ping** — note libre + tag de pensée + valence (positif / neutre / négatif) + intensité 1→5 + lieu et personne (optionnels)
+- **Journal** — feed chronologique groupé par jour, résumé IA par jour (via Claude API)
+- **Analyse** — répartition des tags, valence globale, intensité moyenne, mood par tag, distribution horaire, lieux, personnes
+- **Tags** — créer / supprimer des catégories de pensée
+- **Export** — JSON et CSV depuis la section Analyse
+
+## Données
+
+Tout est stocké en `localStorage` — aucune donnée n'est envoyée nulle part (sauf lors de la génération du résumé du jour, qui appelle l'API Anthropic).
+
+## GitHub Pages
+
+1. Push ce dossier sur un repo GitHub
+2. Settings → Pages → Source : `main` / `root`
+3. L'app tourne sur `https://ton-pseudo.github.io/nom-du-repo`
+
+## Résumé du jour
+
+Le bouton "Résumé du jour" dans le Journal appelle l'API Claude (`claude-sonnet-4-20250514`) pour générer un résumé narratif sobre de ta journée. L'API key est gérée par le proxy Anthropic — aucune clé à configurer.
