@@ -1,11 +1,45 @@
-// ── STATE ──
-const TAGS = [
-  'Travail', 'Relations', 'Futur', 'Passé',
-  'Corps', 'Inquiétude', 'Rêverie', 'Vide',
-  'Créativité', 'Ennui', 'Faim', 'Fatigue'
+// ── DEFAULT DATA ──────────────────────────────────────────────────────────
+
+const DEFAULT_THOUGHTS = [
+  { emoji: '💼', name: 'Travail' },
+  { emoji: '❤️', name: 'Relations' },
+  { emoji: '🔮', name: 'Futur' },
+  { emoji: '📦', name: 'Passé' },
+  { emoji: '🫀', name: 'Corps' },
+  { emoji: '😰', name: 'Inquiétude' },
+  { emoji: '☁️', name: 'Rêverie' },
+  { emoji: '🫥', name: 'Vide' },
+  { emoji: '✨', name: 'Créativité' },
+  { emoji: '😒', name: 'Ennui' },
+  { emoji: '🍕', name: 'Faim' },
+  { emoji: '🛋️', name: 'Fatigue' },
 ];
 
-let currentUser = null; // prénom de l'utilisateur
+const DEFAULT_MOODS = [
+  { emoji: '😌', name: 'Calme' },
+  { emoji: '😊', name: 'Bien' },
+  { emoji: '🤩', name: 'Enthousiaste' },
+  { emoji: '🤔', name: 'Perdu' },
+  { emoji: '😑', name: 'Ennuyé' },
+  { emoji: '😴', name: 'Fatigué' },
+  { emoji: '😤', name: 'Frustré' },
+  { emoji: '😟', name: 'Anxieux' },
+  { emoji: '😔', name: 'Triste' },
+  { emoji: '🤯', name: 'Overwhelmé' },
+];
+
+const EMOJI_PALETTE = [
+  '😌','😊','🤩','😤','😟','😔','😴','🤔','😑','🤯','😀','😅',
+  '💼','❤️','🔮','📦','🫀','😰','☁️','🫥','✨','😒','🍕','🛋️',
+  '🎯','💡','🌊','🔥','⚡','🌙','☀️','🌱','🎵','📚','🏃','🧘',
+  '💬','👥','🏠','🌍','⏰','💰','🎮','🍺','☕','🚗','✈️','🎨',
+];
+
+const INTENSITY_LABELS = ['','À peine','Légère','Modérée','Forte','Très forte'];
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+
+let currentUser = null;
 
 let state = {
   running: false,
@@ -16,28 +50,26 @@ let state = {
   countdownTimer: null,
   entries: [],
   selectedTags: [],
-  selectedValence: null,
+  selectedMood: null,     // { emoji, name }
   selectedIntensity: null,
   currentPingTime: null,
   filter: 'day',
   analyseFilter: 'day',
 };
 
-// ── SAFE STORAGE ──
-const _memStore = {};
+// Lists (editable)
+let thoughtList = [];
+let moodList = [];
+
+// ── SAFE STORAGE ──────────────────────────────────────────────────────────
+
+const _mem = {};
 const store = {
-  get(k) {
-    try { return localStorage.getItem(k); } catch(e) { return _memStore[k] ?? null; }
-  },
-  set(k, v) {
-    try { localStorage.setItem(k, v); } catch(e) { _memStore[k] = v; }
-  }
+  get(k) { try { return localStorage.getItem(k); } catch { return _mem[k] ?? null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { _mem[k] = v; } },
 };
 
-// Clé préfixée par l'utilisateur
-function key(k) {
-  return 'presence_' + (currentUser || 'default') + '_' + k;
-}
+function key(k) { return 'presence_' + (currentUser || 'default') + '_' + k; }
 
 function loadState() {
   try {
@@ -49,39 +81,43 @@ function loadState() {
       state.intervalMin = c.intervalMin || 20;
       state.variance = c.variance !== undefined ? c.variance : true;
     }
-  } catch(e) {}
+    const th = store.get(key('thoughts'));
+    thoughtList = th ? JSON.parse(th) : [...DEFAULT_THOUGHTS];
+    const mo = store.get(key('moods'));
+    moodList = mo ? JSON.parse(mo) : [...DEFAULT_MOODS];
+  } catch {}
 }
 
 function saveEntries() {
-  try { store.set(key('entries'), JSON.stringify(state.entries)); } catch(e) {}
+  try { store.set(key('entries'), JSON.stringify(state.entries)); } catch {}
 }
-
 function saveConfig() {
+  try { store.set(key('config'), JSON.stringify({ intervalMin: state.intervalMin, variance: state.variance })); } catch {}
+}
+function saveLists() {
   try {
-    store.set(key('config'), JSON.stringify({
-      intervalMin: state.intervalMin,
-      variance: state.variance
-    }));
-  } catch(e) {}
+    store.set(key('thoughts'), JSON.stringify(thoughtList));
+    store.set(key('moods'), JSON.stringify(moodList));
+  } catch {}
 }
 
-// ── CLOCK ──
+// ── CLOCK ─────────────────────────────────────────────────────────────────
+
 function updateClock() {
   const now = new Date();
   const h = String(now.getHours()).padStart(2,'0');
   const m = String(now.getMinutes()).padStart(2,'0');
   document.getElementById('clock').textContent = h + ':' + m;
-
   const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
   document.getElementById('dateDisplay').textContent =
     days[now.getDay()] + ' ' + now.getDate() + ' ' + months[now.getMonth()];
 }
-
 setInterval(updateClock, 10000);
 updateClock();
 
-// ── INTERVAL CONFIG ──
+// ── INTERVAL CONFIG ───────────────────────────────────────────────────────
+
 function changeInterval(delta) {
   state.intervalMin = Math.max(5, Math.min(120, state.intervalMin + delta));
   document.getElementById('intervalDisplay').textContent = state.intervalMin;
@@ -96,10 +132,10 @@ function toggleVariance() {
   if (state.running) restartTimer();
 }
 
-// ── SESSION ──
+// ── SESSION ───────────────────────────────────────────────────────────────
+
 function toggleSession() {
-  if (state.running) stopSession();
-  else startSession();
+  if (state.running) stopSession(); else startSession();
 }
 
 function startSession() {
@@ -130,10 +166,7 @@ function restartTimer() {
 
 function schedulePing() {
   let ms = state.intervalMin * 60 * 1000;
-  if (state.variance) {
-    const factor = 0.5 + Math.random(); // 0.5x to 1.5x
-    ms = Math.round(ms * factor);
-  }
+  if (state.variance) ms = Math.round(ms * (0.5 + Math.random()));
   state.nextPingAt = Date.now() + ms;
   state.pingTimer = setTimeout(triggerPing, ms);
   startCountdown();
@@ -143,53 +176,41 @@ function startCountdown() {
   clearInterval(state.countdownTimer);
   state.countdownTimer = setInterval(() => {
     if (!state.nextPingAt) return;
-    const remaining = state.nextPingAt - Date.now();
-    if (remaining <= 0) { clearInterval(state.countdownTimer); return; }
-    const m = Math.floor(remaining / 60000);
-    const s = Math.floor((remaining % 60000) / 1000);
+    const rem = state.nextPingAt - Date.now();
+    if (rem <= 0) { clearInterval(state.countdownTimer); return; }
+    const m = Math.floor(rem / 60000);
+    const s = Math.floor((rem % 60000) / 1000);
     document.getElementById('nextPingCountdown').textContent =
       (m > 0 ? m + ' min ' : '') + s + ' s';
   }, 1000);
 }
 
-// ── PING ──
+// ── PING ──────────────────────────────────────────────────────────────────
+
 function triggerPing() {
   saveEntries();
   state.currentPingTime = new Date();
 
-  // Try notification — desktop: works great. iOS: silently ignored.
   try {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       const notif = new Notification('🔔 Présence — Moment de conscience', {
         body: "Qu'est-ce qui occupait ton esprit à cet instant ?",
         requireInteraction: false,
-        silent: false,
       });
       notif.onclick = () => {
-        window.focus();
-        notif.close();
-        // If overlay already closed (user was on page), re-open it
-        if (!document.getElementById('ping-overlay').classList.contains('show')) {
+        window.focus(); notif.close();
+        if (!document.getElementById('ping-overlay').classList.contains('show'))
           document.getElementById('ping-overlay').classList.add('show');
-        }
       };
-      setTimeout(() => { try { notif.close(); } catch(e){} }, 8000);
+      setTimeout(() => { try { notif.close(); } catch {} }, 8000);
     }
-  } catch(e) {}
+  } catch {}
 
-  // Vibrate (Android + some browsers)
-  try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch(e) {}
+  try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch {}
+  try { flashScreen(); } catch {}
+  try { blinkTitle(); } catch {}
+  try { playPingSound(); } catch {}
 
-  // Visual flash
-  try { flashScreen(); } catch(e) {}
-
-  // Tab title blink (visible quand l'onglet est en arrière-plan)
-  try { blinkTitle(); } catch(e) {}
-
-  // Audio ping (works on iOS when tab is active)
-  try { playPingSound(); } catch(e) {}
-
-  // Show overlay
   document.getElementById('ping-overlay').classList.add('show');
   updateJournal();
 }
@@ -197,7 +218,6 @@ function triggerPing() {
 function flashScreen() {
   const el = document.getElementById('flash-overlay');
   el.classList.remove('flashing');
-  // Force reflow
   void el.offsetWidth;
   el.classList.add('flashing');
   el.addEventListener('animationend', () => el.classList.remove('flashing'), { once: true });
@@ -206,31 +226,25 @@ function flashScreen() {
 let _blinkInterval = null;
 function blinkTitle() {
   clearInterval(_blinkInterval);
-  const original = 'Présence';
+  const orig = 'Présence';
   let on = true;
   document.title = '🔔 PING !';
-  _blinkInterval = setInterval(() => {
-    document.title = on ? original : '🔔 PING !';
-    on = !on;
-  }, 800);
-  // Stop blinking when user interacts with the overlay
-  const stop = () => { clearInterval(_blinkInterval); document.title = original; };
-  document.getElementById('ping-overlay').addEventListener('click', stop, { once: true });
+  _blinkInterval = setInterval(() => { document.title = on ? orig : '🔔 PING !'; on = !on; }, 800);
+  document.getElementById('ping-overlay').addEventListener('click',
+    () => { clearInterval(_blinkInterval); document.title = orig; }, { once: true });
 }
 
 function playPingSound() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
+  osc.connect(gain); gain.connect(ctx.destination);
   osc.type = 'sine';
   osc.frequency.setValueAtTime(880, ctx.currentTime);
   osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
   gain.gain.setValueAtTime(0.4, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.6);
+  osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.6);
 }
 
 function respondToPing() {
@@ -240,72 +254,82 @@ function respondToPing() {
 
 function dismissPing() {
   document.getElementById('ping-overlay').classList.remove('show');
-  // Log as skipped
-  state.entries.unshift({
-    time: state.currentPingTime.toISOString(),
-    tags: [],
-    text: '',
-    skipped: true,
-  });
+  state.entries.unshift({ time: state.currentPingTime.toISOString(), tags: [], text: '', skipped: true });
   saveEntries();
   updateJournal();
   if (state.running) schedulePing();
 }
 
-// ── CAPTURE ──
+// ── CAPTURE ───────────────────────────────────────────────────────────────
+
 function openCapture() {
-  // Build tags
-  const grid = document.getElementById('tagsGrid');
-  grid.innerHTML = '';
   state.selectedTags = [];
-  TAGS.forEach(t => {
+  state.selectedMood = null;
+  state.selectedIntensity = null;
+
+  // Thought tags
+  const tagsGrid = document.getElementById('tagsGrid');
+  tagsGrid.innerHTML = '';
+  thoughtList.forEach(item => {
     const el = document.createElement('div');
     el.className = 'tag';
-    el.textContent = t;
+    el.textContent = item.emoji + ' ' + item.name;
     el.onclick = () => {
       el.classList.toggle('selected');
-      if (el.classList.contains('selected')) state.selectedTags.push(t);
-      else state.selectedTags = state.selectedTags.filter(x => x !== t);
+      if (el.classList.contains('selected')) state.selectedTags.push(item.name);
+      else state.selectedTags = state.selectedTags.filter(x => x !== item.name);
     };
-    grid.appendChild(el);
+    tagsGrid.appendChild(el);
   });
 
-  document.getElementById('freeText').value = '';
-  document.getElementById('lieuInput').value = '';
-  document.getElementById('personneInput').value = '';
+  // Mood tags
+  const moodGrid = document.getElementById('moodGrid');
+  moodGrid.innerHTML = '';
+  const intensitySection = document.getElementById('intensity-section');
+  intensitySection.style.display = 'none';
 
-  // Reset mood
-  state.selectedValence = null;
-  state.selectedIntensity = null;
-  document.querySelectorAll('.valence-btn').forEach(b => b.classList.remove('selected'));
-  document.querySelectorAll('.intensity-btn').forEach(b => b.classList.remove('selected'));
-  const hint = document.getElementById('intensity-hint');
-  if (hint) hint.textContent = '';
-
-  // Bind mood buttons
-  document.querySelectorAll('.valence-btn').forEach(btn => {
-    btn.onclick = () => {
-      state.selectedValence = state.selectedValence === btn.dataset.v ? null : btn.dataset.v;
-      document.querySelectorAll('.valence-btn').forEach(b => b.classList.remove('selected'));
-      if (state.selectedValence) document.getElementById('vbtn-' + state.selectedValence).classList.add('selected');
+  moodList.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.textContent = item.emoji + ' ' + item.name;
+    el.onclick = () => {
+      // Deselect previous mood
+      moodGrid.querySelectorAll('.tag').forEach(t => t.classList.remove('selected'));
+      if (state.selectedMood && state.selectedMood.name === item.name) {
+        // Toggle off
+        state.selectedMood = null;
+        state.selectedIntensity = null;
+        intensitySection.style.display = 'none';
+        document.querySelectorAll('.intensity-btn').forEach(b => b.classList.remove('selected'));
+      } else {
+        el.classList.add('selected');
+        state.selectedMood = item;
+        state.selectedIntensity = null;
+        document.querySelectorAll('.intensity-btn').forEach(b => b.classList.remove('selected'));
+        // Show intensity with label
+        document.getElementById('intensity-label-text').textContent =
+          'Intensité — à quel point tu te sens ' + item.emoji + ' ' + item.name + ' ?';
+        intensitySection.style.display = 'block';
+      }
     };
+    moodGrid.appendChild(el);
   });
 
-  const INTENSITY_LABELS = ['','À peine','Légère','Modérée','Forte','Très forte'];
+  // Intensity buttons
   document.querySelectorAll('.intensity-btn').forEach(btn => {
+    btn.classList.remove('selected');
     btn.onclick = () => {
       const i = parseInt(btn.dataset.i);
       state.selectedIntensity = state.selectedIntensity === i ? null : i;
       document.querySelectorAll('.intensity-btn').forEach(b => b.classList.remove('selected'));
-      const hint = document.getElementById('intensity-hint');
-      if (state.selectedIntensity) {
-        btn.classList.add('selected');
-        if (hint) hint.textContent = INTENSITY_LABELS[state.selectedIntensity];
-      } else {
-        if (hint) hint.textContent = '';
-      }
+      if (state.selectedIntensity) btn.classList.add('selected');
     };
   });
+
+  // Reset optional fields
+  document.getElementById('freeText').value = '';
+  document.getElementById('lieuInput').value = '';
+  document.getElementById('personneInput').value = '';
 
   const t = state.currentPingTime;
   document.getElementById('captureTime').textContent =
@@ -319,19 +343,19 @@ function openCapture() {
 
 function saveEntry() {
   const text = document.getElementById('freeText').value.trim();
-  if (state.selectedTags.length === 0 && !text) {
-    skipEntry(); return;
-  }
-  const lieu = (document.getElementById('lieuInput').value || '').trim();
-  const personne = (document.getElementById('personneInput').value || '').trim();
+  const lieu = document.getElementById('lieuInput').value.trim();
+  const personne = document.getElementById('personneInput').value.trim();
+
+  if (state.selectedTags.length === 0 && !text && !state.selectedMood) { skipEntry(); return; }
+
   state.entries.unshift({
     time: state.currentPingTime.toISOString(),
     tags: [...state.selectedTags],
-    text,
-    valence: state.selectedValence,
+    mood: state.selectedMood ? { ...state.selectedMood } : null,
     intensity: state.selectedIntensity,
     lieu: lieu || null,
     personne: personne || null,
+    text,
     skipped: false,
   });
   saveEntries();
@@ -343,9 +367,7 @@ function saveEntry() {
 function skipEntry() {
   state.entries.unshift({
     time: state.currentPingTime || new Date(),
-    tags: [],
-    text: '',
-    skipped: true,
+    tags: [], text: '', skipped: true,
   });
   saveEntries();
   updateJournal();
@@ -353,30 +375,26 @@ function skipEntry() {
   if (state.running) schedulePing();
 }
 
-// ── JOURNAL ──
+// ── JOURNAL ───────────────────────────────────────────────────────────────
+
 function getFilteredEntries() {
   const now = new Date();
-  return state.entries
-    .map((e, i) => ({ ...e, _idx: i }))
-    .filter(e => {
-      const d = new Date(e.time);
-      if (state.filter === 'day') {
-        return d.toDateString() === now.toDateString();
-      } else if (state.filter === 'week') {
-        const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6);
-        weekAgo.setHours(0,0,0,0);
-        return d >= weekAgo;
-      } else { // month
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      }
-    });
+  return state.entries.map((e, i) => ({ ...e, _idx: i })).filter(e => {
+    const d = new Date(e.time);
+    if (state.filter === 'day') return d.toDateString() === now.toDateString();
+    if (state.filter === 'week') {
+      const w = new Date(now); w.setDate(now.getDate() - 6); w.setHours(0,0,0,0);
+      return d >= w;
+    }
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
 }
 
 function setFilter(f) {
   state.filter = f;
-  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#view-journal .filter-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + f).classList.add('active');
-  const labels = { day: 'Aujourd\'hui', week: '7 derniers jours', month: 'Ce mois-ci' };
+  const labels = { day: "Aujourd'hui", week: '7 derniers jours', month: 'Ce mois-ci' };
   document.getElementById('journalTitle').textContent = labels[f];
   updateJournal();
 }
@@ -384,7 +402,6 @@ function setFilter(f) {
 function updateJournal() {
   const list = document.getElementById('entriesList');
   const filtered = getFilteredEntries();
-
   const total = filtered.length;
   const answered = filtered.filter(e => !e.skipped).length;
   const rate = total > 0 ? Math.round(answered / total * 100) + '%' : '—';
@@ -394,16 +411,14 @@ function updateJournal() {
   document.getElementById('statRate').textContent = rate;
   document.getElementById('journalCount').textContent = total + ' entrée' + (total !== 1 ? 's' : '');
 
-  if (filtered.length === 0) {
-    const labels = { day: 'aujourd\'hui', week: 'cette semaine', month: 'ce mois-ci' };
+  if (!filtered.length) {
+    const labels = { day: "aujourd'hui", week: 'cette semaine', month: 'ce mois-ci' };
     list.innerHTML = `<div class="empty-journal">Aucune entrée ${labels[state.filter]}.<br><em>Démarre une session pour commencer.</em></div>`;
     return;
   }
 
-  // Group by date if week/month view
   const showDate = state.filter !== 'day';
-  let html = '';
-  let lastDate = '';
+  let html = '', lastDate = '';
 
   filtered.forEach(e => {
     const d = new Date(e.time);
@@ -414,30 +429,28 @@ function updateJournal() {
       lastDate = dateStr;
       const days = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
       const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
-      const label = days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
-      html += `<div class="date-separator">${label}</div>`;
+      html += `<div class="date-separator">${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}</div>`;
     }
 
-    const actions = `
-      <div class="entry-actions">
-        ${!e.skipped ? `<button class="entry-action-btn edit" onclick="openEdit(${e._idx})">Éditer</button>` : ''}
-        <button class="entry-action-btn del" onclick="deleteEntry(${e._idx})">Suppr.</button>
-      </div>`;
+    const actions = `<div class="entry-actions">
+      ${!e.skipped ? `<button class="entry-action-btn edit" onclick="openEdit(${e._idx})">Éditer</button>` : ''}
+      <button class="entry-action-btn del" onclick="deleteEntry(${e._idx})">Suppr.</button>
+    </div>`;
 
     if (e.skipped) {
       html += `<div class="entry">${actions}<div class="entry-time">${timeStr}</div><div class="entry-skipped">— Ping ignoré</div></div>`;
     } else {
-      const moodDot = e.valence === 'pos' ? '● ' : e.valence === 'neg' ? '● ' : e.valence === 'neu' ? '● ' : '';
-      const moodColor = e.valence === 'pos' ? '#6db88a' : e.valence === 'neg' ? '#c47070' : '#c8a97e';
-      const moodHtml = e.valence
-        ? `<span style="color:${moodColor};font-family:'DM Mono',monospace;font-size:11px">● ${ {pos:'Positif',neu:'Neutre',neg:'Négatif'}[e.valence]}${e.intensity ? ' · ' + e.intensity + '/5' : ''}</span>`
+      const moodHtml = e.mood
+        ? `<span style="font-size:13px;font-family:'DM Mono',monospace;color:var(--accent)">${e.mood.emoji} ${e.mood.name}${e.intensity ? ' · ' + e.intensity + '/5' : ''}</span>`
         : '';
-      const ctxHtml = [e.lieu, e.personne].filter(Boolean).map(v => `<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">→ ${v}</span>`).join(' ');
+      const ctxHtml = [e.lieu, e.personne].filter(Boolean)
+        .map(v => `<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">→ ${v}</span>`)
+        .join(' ');
       html += `<div class="entry">${actions}
         <div class="entry-time">${timeStr}</div>
         ${e.tags && e.tags.length ? `<div class="entry-tags">${e.tags.map(t => `<div class="entry-tag">${t}</div>`).join('')}</div>` : ''}
-        ${moodHtml ? `<div style="margin-bottom:5px">${moodHtml}</div>` : ''}
-        ${ctxHtml ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:5px">${ctxHtml}</div>` : ''}
+        ${moodHtml ? `<div style="margin:4px 0">${moodHtml}</div>` : ''}
+        ${ctxHtml ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px">${ctxHtml}</div>` : ''}
         ${e.text ? `<div class="entry-text">${e.text}</div>` : ''}
       </div>`;
     }
@@ -446,7 +459,8 @@ function updateJournal() {
   list.innerHTML = html;
 }
 
-// ── EDIT / DELETE ──
+// ── EDIT / DELETE ─────────────────────────────────────────────────────────
+
 let _editIdx = null;
 let _editSelectedTags = [];
 
@@ -457,14 +471,14 @@ function openEdit(idx) {
 
   const grid = document.getElementById('editTagsGrid');
   grid.innerHTML = '';
-  TAGS.forEach(t => {
+  thoughtList.forEach(item => {
     const el = document.createElement('div');
-    el.className = 'tag' + (_editSelectedTags.includes(t) ? ' selected' : '');
-    el.textContent = t;
+    el.className = 'tag' + (_editSelectedTags.includes(item.name) ? ' selected' : '');
+    el.textContent = item.emoji + ' ' + item.name;
     el.onclick = () => {
       el.classList.toggle('selected');
-      if (el.classList.contains('selected')) _editSelectedTags.push(t);
-      else _editSelectedTags = _editSelectedTags.filter(x => x !== t);
+      if (el.classList.contains('selected')) _editSelectedTags.push(item.name);
+      else _editSelectedTags = _editSelectedTags.filter(x => x !== item.name);
     };
     grid.appendChild(el);
   });
@@ -481,12 +495,7 @@ function closeEdit() {
 function saveEdit() {
   if (_editIdx === null) return;
   const text = document.getElementById('editText').value.trim();
-  state.entries[_editIdx] = {
-    ...state.entries[_editIdx],
-    tags: [..._editSelectedTags],
-    text,
-    skipped: false,
-  };
+  state.entries[_editIdx] = { ...state.entries[_editIdx], tags: [..._editSelectedTags], text, skipped: false };
   saveEntries();
   updateJournal();
   closeEdit();
@@ -500,48 +509,137 @@ function deleteEntry(idx) {
   });
 }
 
-// ── CUSTOM CONFIRM (confirm() bloqué sur iOS file://) ──
-function showConfirm(message, onOk) {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:700;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
-  overlay.innerHTML = `
-    <div style="background:#111;border:1px solid #333;border-radius:2px;padding:28px 24px;margin:24px;max-width:320px;width:100%;text-align:center">
-      <div style="font-size:16px;color:#e8e4dc;margin-bottom:24px;line-height:1.5">${message}</div>
-      <div style="display:flex;gap:10px">
-        <button id="confirmNo" style="flex:1;padding:12px;background:transparent;border:1px solid #333;color:#666;font-family:DM Sans,sans-serif;font-size:15px;cursor:pointer;border-radius:2px">Annuler</button>
-        <button id="confirmYes" style="flex:1;padding:12px;background:#5a2020;border:1px solid #8b3a3a;color:#e8e4dc;font-family:DM Sans,sans-serif;font-size:15px;cursor:pointer;border-radius:2px">Supprimer</button>
+// ── SETTINGS (list management) ────────────────────────────────────────────
+
+function renderSettings() {
+  renderThoughtList();
+  renderMoodList();
+}
+
+function renderThoughtList() {
+  const el = document.getElementById('thought-list');
+  if (!el) return;
+  el.innerHTML = thoughtList.map((item, i) => `
+    <div class="settings-item">
+      <span class="settings-item-emoji">${item.emoji}</span>
+      <span class="settings-item-name">${item.name}</span>
+      <div class="settings-item-actions">
+        <button class="settings-item-btn edit" onclick="openEditItem('thought', ${i})">Éditer</button>
+        <button class="settings-item-btn del" onclick="deleteItem('thought', ${i})">Suppr.</button>
       </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  overlay.querySelector('#confirmNo').onclick = () => document.body.removeChild(overlay);
-  overlay.querySelector('#confirmYes').onclick = () => { document.body.removeChild(overlay); onOk(); };
+    </div>`).join('');
 }
 
-// ── EXPORT ──
-function exportData() {
-  try {
-    const lines = ['Heure,Tags,Valence,Intensité,Lieu,Personne,Note,Ignoré'];
-    state.entries.forEach(e => {
-      const d = new Date(e.time);
-      const time = d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
-      lines.push(`"${time}","${(e.tags||[]).join('; ')}","${(e.text||'').replace(/"/g,'""')}","${e.skipped ? 'oui' : 'non'}"`);
-    });
-    const csv = lines.join('\n');
-    try {
-      const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'presence_' + new Date().toISOString().slice(0,10) + '.csv';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    } catch(e2) {
-      // Fallback iOS : ouvre dans une nouvelle fenêtre
-      const w = window.open();
-      if (w) { w.document.write('<pre>' + csv + '</pre>'); }
+function renderMoodList() {
+  const el = document.getElementById('mood-list');
+  if (!el) return;
+  el.innerHTML = moodList.map((item, i) => `
+    <div class="settings-item">
+      <span class="settings-item-emoji">${item.emoji}</span>
+      <span class="settings-item-name">${item.name}</span>
+      <div class="settings-item-actions">
+        <button class="settings-item-btn edit" onclick="openEditItem('mood', ${i})">Éditer</button>
+        <button class="settings-item-btn del" onclick="deleteItem('mood', ${i})">Suppr.</button>
+      </div>
+    </div>`).join('');
+}
+
+function deleteItem(listType, idx) {
+  showConfirm('Supprimer cet élément ?', () => {
+    if (listType === 'thought') thoughtList.splice(idx, 1);
+    else moodList.splice(idx, 1);
+    saveLists();
+    renderSettings();
+  });
+}
+
+// ── ITEM MODAL (add / edit) ───────────────────────────────────────────────
+
+let _modalMode = null; // 'thought' | 'mood'
+let _modalIdx = null;  // null = add, number = edit
+let _modalEmoji = '';
+
+function openAddItem(listType) {
+  _modalMode = listType;
+  _modalIdx = null;
+  _modalEmoji = '';
+  document.getElementById('item-modal-title').textContent =
+    'Ajouter — ' + (listType === 'thought' ? 'Catégorie de pensée' : 'Mood');
+  document.getElementById('item-name-input').value = '';
+  document.getElementById('custom-emoji-input').value = '';
+  document.getElementById('selected-emoji-preview').textContent = '—';
+  buildEmojiPicker('');
+  document.getElementById('item-modal').classList.add('show');
+}
+
+function openEditItem(listType, idx) {
+  _modalMode = listType;
+  _modalIdx = idx;
+  const item = listType === 'thought' ? thoughtList[idx] : moodList[idx];
+  _modalEmoji = item.emoji;
+  document.getElementById('item-modal-title').textContent = 'Modifier';
+  document.getElementById('item-name-input').value = item.name;
+  document.getElementById('custom-emoji-input').value = '';
+  document.getElementById('selected-emoji-preview').textContent = item.emoji;
+  buildEmojiPicker(item.emoji);
+  document.getElementById('item-modal').classList.add('show');
+}
+
+function buildEmojiPicker(selected) {
+  const picker = document.getElementById('emoji-picker');
+  picker.innerHTML = EMOJI_PALETTE.map(e =>
+    `<div class="emoji-option${e === selected ? ' selected' : ''}" data-emoji="${e}" onclick="pickEmoji('${e}')">${e}</div>`
+  ).join('');
+}
+
+function pickEmoji(e) {
+  _modalEmoji = e;
+  document.getElementById('selected-emoji-preview').textContent = e;
+  document.getElementById('custom-emoji-input').value = '';
+  document.querySelectorAll('.emoji-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.emoji === e);
+  });
+}
+
+function closeItemModal() {
+  document.getElementById('item-modal').classList.remove('show');
+  _modalMode = null; _modalIdx = null; _modalEmoji = '';
+}
+
+function saveItem() {
+  // Check custom emoji input first
+  const customEmoji = document.getElementById('custom-emoji-input').value.trim();
+  if (customEmoji) _modalEmoji = customEmoji;
+
+  const name = document.getElementById('item-name-input').value.trim();
+  if (!name) { document.getElementById('item-name-input').focus(); return; }
+  if (!_modalEmoji) { alert('Choisis un emoji !'); return; }
+
+  const item = { emoji: _modalEmoji, name };
+  const list = _modalMode === 'thought' ? thoughtList : moodList;
+
+  if (_modalIdx === null) list.push(item);
+  else list[_modalIdx] = item;
+
+  saveLists();
+  renderSettings();
+  closeItemModal();
+}
+
+// Custom emoji input live preview
+document.addEventListener('input', e => {
+  if (e.target.id === 'custom-emoji-input') {
+    const v = e.target.value.trim();
+    if (v) {
+      _modalEmoji = v;
+      document.getElementById('selected-emoji-preview').textContent = v;
+      document.querySelectorAll('.emoji-option').forEach(el => el.classList.remove('selected'));
     }
-  } catch(e) {}
-}
+  }
+});
 
-// ── ANALYSE ──
+// ── ANALYSE ───────────────────────────────────────────────────────────────
+
 function setAnalyseFilter(f) {
   state.analyseFilter = f;
   document.querySelectorAll('#view-analyse .filter-tab').forEach(t => t.classList.remove('active'));
@@ -575,29 +673,23 @@ function renderAnalyse() {
   }
 
   const total = entries.length;
+  const withMood = entries.filter(e => e.mood).length;
   const avgInt = entries.filter(e => e.intensity).length
-    ? (entries.filter(e => e.intensity).reduce((s,e) => s + e.intensity, 0) / entries.filter(e => e.intensity).length).toFixed(1)
+    ? (entries.filter(e => e.intensity).reduce((s, e) => s + e.intensity, 0) / entries.filter(e => e.intensity).length).toFixed(1)
     : '—';
-
-  // Valence counts
-  const valCounts = { pos:0, neu:0, neg:0 };
-  entries.filter(e => e.valence).forEach(e => valCounts[e.valence]++);
-  const withVal = entries.filter(e => e.valence).length;
 
   // Tag counts
   const tagCounts = {};
-  entries.forEach(e => (e.tags||[]).forEach(t => { tagCounts[t] = (tagCounts[t]||0)+1; }));
-  const sortedTags = Object.entries(tagCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  entries.forEach(e => (e.tags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+  const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
-  // Tag × mood
-  const tagMood = {};
-  sortedTags.forEach(([t]) => {
-    const tp = entries.filter(e => (e.tags||[]).includes(t) && e.valence);
-    if (!tp.length) return;
-    const pos = tp.filter(e => e.valence==='pos').length;
-    const neg = tp.filter(e => e.valence==='neg').length;
-    tagMood[t] = pos > neg ? 'pos' : neg > pos ? 'neg' : 'neu';
+  // Mood counts
+  const moodCounts = {};
+  entries.filter(e => e.mood).forEach(e => {
+    const k = e.mood.emoji + ' ' + e.mood.name;
+    moodCounts[k] = (moodCounts[k] || 0) + 1;
   });
+  const sortedMoods = Object.entries(moodCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   // Hour distribution
   const hourCounts = new Array(24).fill(0);
@@ -606,78 +698,86 @@ function renderAnalyse() {
 
   // Lieux / personnes
   const lieuC = {}, personneC = {};
-  entries.filter(e=>e.lieu).forEach(e => lieuC[e.lieu]=(lieuC[e.lieu]||0)+1);
-  entries.filter(e=>e.personne).forEach(e => personneC[e.personne]=(personneC[e.personne]||0)+1);
-  const sortedLieux = Object.entries(lieuC).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const sortedPersonnes = Object.entries(personneC).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  entries.filter(e => e.lieu).forEach(e => { lieuC[e.lieu] = (lieuC[e.lieu] || 0) + 1; });
+  entries.filter(e => e.personne).forEach(e => { personneC[e.personne] = (personneC[e.personne] || 0) + 1; });
+  const sortedLieux = Object.entries(lieuC).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const sortedPersonnes = Object.entries(personneC).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-  function barRow(label, count, max, cls='') {
+  function barRow(label, count, max) {
     return `<div class="analyse-bar-row">
       <span class="analyse-bar-label">${label}</span>
-      <div class="analyse-bar-track"><div class="analyse-bar-fill ${cls}" style="width:${Math.round(count/max*100)}%"></div></div>
+      <div class="analyse-bar-track"><div class="analyse-bar-fill" style="width:${Math.round(count/max*100)}%"></div></div>
       <span class="analyse-bar-val">${count}</span>
     </div>`;
   }
 
-  const valTotal = withVal || 1;
-  const corrCells = Object.entries(tagMood).map(([t,m]) => {
-    const label = m==='pos'?'+ bien':m==='neg'?'− pesant':'≈ neutre';
-    return `<div class="corr-cell"><div class="corr-cell-tag">${t}</div><div class="corr-cell-val ${m}">${label}</div></div>`;
-  }).join('');
-
   el.innerHTML = `
     <div class="analyse-stats-row">
       <div class="analyse-stat"><div class="analyse-stat-num">${total}</div><div class="analyse-stat-label">Pings</div></div>
-      <div class="analyse-stat"><div class="analyse-stat-num">${avgInt}</div><div class="analyse-stat-label">Intensité moy.</div></div>
-      <div class="analyse-stat"><div class="analyse-stat-num">${withVal}</div><div class="analyse-stat-label">Avec mood</div></div>
+      <div class="analyse-stat"><div class="analyse-stat-num">${withMood}</div><div class="analyse-stat-label">Avec mood</div></div>
+      <div class="analyse-stat"><div class="analyse-stat-num">${avgInt}</div><div class="analyse-stat-label">Intensité</div></div>
     </div>
 
-    ${sortedTags.length ? `
-    <div class="analyse-section">
-      <div class="analyse-section-title">Tags — répartition</div>
-      ${sortedTags.map(([t,c]) => barRow(t, c, sortedTags[0][1])).join('')}
+    ${sortedTags.length ? `<div class="analyse-section">
+      <div class="analyse-section-title">Catégories de pensée</div>
+      ${sortedTags.map(([t, c]) => barRow(t, c, sortedTags[0][1])).join('')}
     </div>` : ''}
 
-    ${withVal ? `
-    <div class="analyse-section">
-      <div class="analyse-section-title">Valence globale</div>
-      ${barRow('Positif', valCounts.pos, valTotal, 'pos')}
-      ${barRow('Neutre', valCounts.neu, valTotal, '')}
-      ${barRow('Négatif', valCounts.neg, valTotal, 'neg')}
-    </div>` : ''}
-
-    ${corrCells ? `
-    <div class="analyse-section">
-      <div class="analyse-section-title">Mood dominant par tag</div>
-      <div class="corr-grid">${corrCells}</div>
+    ${sortedMoods.length ? `<div class="analyse-section">
+      <div class="analyse-section-title">Moods</div>
+      ${sortedMoods.map(([m, c]) => barRow(m, c, sortedMoods[0][1])).join('')}
     </div>` : ''}
 
     <div class="analyse-section">
       <div class="analyse-section-title">Distribution horaire</div>
       <div class="hour-bars">
-        ${hourCounts.map((c,h) => `
+        ${hourCounts.map((c, h) => `
           <div class="hour-bar-col">
             <div class="hour-bar-fill" style="height:${Math.round(c/maxH*100)}%"></div>
-            ${h%6===0?`<span class="hour-bar-lbl">${h}h</span>`:'<span class="hour-bar-lbl"></span>'}
+            ${h % 6 === 0 ? `<span class="hour-bar-lbl">${h}h</span>` : '<span class="hour-bar-lbl"></span>'}
           </div>`).join('')}
       </div>
     </div>
 
-    ${sortedLieux.length ? `
-    <div class="analyse-section">
+    ${sortedLieux.length ? `<div class="analyse-section">
       <div class="analyse-section-title">Lieux</div>
-      ${sortedLieux.map(([l,c]) => barRow(l, c, sortedLieux[0][1])).join('')}
+      ${sortedLieux.map(([l, c]) => barRow(l, c, sortedLieux[0][1])).join('')}
     </div>` : ''}
 
-    ${sortedPersonnes.length ? `
-    <div class="analyse-section">
+    ${sortedPersonnes.length ? `<div class="analyse-section">
       <div class="analyse-section-title">Personnes & contexte</div>
-      ${sortedPersonnes.map(([p,c]) => barRow(p, c, sortedPersonnes[0][1])).join('')}
+      ${sortedPersonnes.map(([p, c]) => barRow(p, c, sortedPersonnes[0][1])).join('')}
     </div>` : ''}
   `;
 }
 
-// ── NAVIGATION ──
+// ── EXPORT ────────────────────────────────────────────────────────────────
+
+function exportData() {
+  try {
+    const lines = ['Heure,Tags,Mood,Intensité,Lieu,Personne,Note,Ignoré'];
+    state.entries.forEach(e => {
+      const d = new Date(e.time);
+      const time = d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+      const mood = e.mood ? e.mood.emoji + ' ' + e.mood.name : '';
+      lines.push(`"${time}","${(e.tags||[]).join('; ')}","${mood}","${e.intensity||''}","${e.lieu||''}","${e.personne||''}","${(e.text||'').replace(/"/g,'""')}","${e.skipped ? 'oui' : 'non'}"`);
+    });
+    const csv = lines.join('\n');
+    try {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'presence_' + new Date().toISOString().slice(0,10) + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } catch {
+      const w = window.open();
+      if (w) w.document.write('<pre>' + csv + '</pre>');
+    }
+  } catch {}
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────
+
 function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -693,16 +793,36 @@ function showView(name) {
     const navBtn = document.getElementById('nav-' + name);
     if (navBtn) navBtn.classList.add('active');
     if (name === 'analyse') renderAnalyse();
+    if (name === 'settings') renderSettings();
   }
 }
 
-// ── NOTIFICATIONS ──
+// ── CUSTOM CONFIRM ────────────────────────────────────────────────────────
+
+function showConfirm(message, onOk) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:700;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+  overlay.innerHTML = `
+    <div style="background:#111;border:1px solid #333;border-radius:2px;padding:28px 24px;margin:24px;max-width:320px;width:100%;text-align:center">
+      <div style="font-size:16px;color:#e8e4dc;margin-bottom:24px;line-height:1.5">${message}</div>
+      <div style="display:flex;gap:10px">
+        <button id="confirmNo" style="flex:1;padding:12px;background:transparent;border:1px solid #333;color:#666;font-family:'DM Sans',sans-serif;font-size:15px;cursor:pointer;border-radius:2px">Annuler</button>
+        <button id="confirmYes" style="flex:1;padding:12px;background:#5a2020;border:1px solid #8b3a3a;color:#e8e4dc;font-family:'DM Sans',sans-serif;font-size:15px;cursor:pointer;border-radius:2px">Supprimer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#confirmNo').onclick = () => document.body.removeChild(overlay);
+  overlay.querySelector('#confirmYes').onclick = () => { document.body.removeChild(overlay); onOk(); };
+}
+
+// ── NOTIFICATIONS ─────────────────────────────────────────────────────────
+
 function checkNotifPermission() {
   const container = document.getElementById('notifBannerContainer');
   if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') { container.innerHTML = ''; return; }
   if (Notification.permission === 'denied') {
-    container.innerHTML = `<div class="notif-banner"><span>🔕</span> Notifications bloquées — active-les dans les réglages du navigateur pour recevoir les pings même quand l'app est en arrière-plan.</div>`;
+    container.innerHTML = `<div class="notif-banner"><span>🔕</span> Notifications bloquées — active-les dans les réglages du navigateur.</div>`;
     return;
   }
   container.innerHTML = `<div class="notif-banner" onclick="requestNotif()"><span>🔔</span> Autoriser les notifications pour être pingé en arrière-plan</div>`;
@@ -712,11 +832,12 @@ function requestNotif() {
   Notification.requestPermission().then(() => checkNotifPermission());
 }
 
-// ── THEME ──
+// ── THEME ─────────────────────────────────────────────────────────────────
+
 function toggleTheme() {
   const isLight = document.documentElement.classList.toggle('light');
   document.getElementById('themeIcon').textContent = isLight ? '☾' : '☀';
-  try { store.set(key('theme'), isLight ? 'light' : 'dark'); } catch(e) {}
+  try { store.set(key('theme'), isLight ? 'light' : 'dark'); } catch {}
 }
 
 function loadTheme() {
@@ -730,13 +851,12 @@ function loadTheme() {
   }
 }
 
-// ── ONBOARDING / USER ──
+// ── ONBOARDING / USER ─────────────────────────────────────────────────────
+
 function checkUser() {
   const saved = store.get('presence_current_user');
-  if (saved) {
-    currentUser = saved;
-    startApp();
-  } else {
+  if (saved) { currentUser = saved; startApp(); }
+  else {
     const ob = document.getElementById('view-onboarding');
     ob.style.display = 'flex';
     setTimeout(() => document.getElementById('nameInput').focus(), 100);
@@ -753,7 +873,7 @@ function confirmName() {
 }
 
 function switchUser() {
-  showConfirm('Changer d\'utilisateur ? Ta session en cours sera arrêtée.', () => {
+  showConfirm("Changer d'utilisateur ? Ta session en cours sera arrêtée.", () => {
     stopSession();
     store.set('presence_current_user', '');
     currentUser = null;
@@ -767,11 +887,9 @@ function switchUser() {
 }
 
 function startApp() {
-  // Affiche le prénom dans le header
   const display = currentUser.replace(/_/g, ' ');
   document.getElementById('headerName').textContent =
     display.charAt(0).toUpperCase() + display.slice(1) + ' ↩';
-
   loadState();
   loadTheme();
   document.getElementById('intervalDisplay').textContent = state.intervalMin;
@@ -780,5 +898,5 @@ function startApp() {
   checkNotifPermission();
 }
 
-// ── INIT ──
+// ── INIT ──────────────────────────────────────────────────────────────────
 checkUser();
