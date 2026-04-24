@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="Présence — interruptions aléatoires pour observer tes pensées">
   <title>Présence</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
@@ -34,7 +33,8 @@
     <div class="title">pré<span>sence</span></div>
     <div id="headerName" style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.15em;color:var(--text-muted);cursor:pointer" onclick="switchUser()"></div>
   </div>
-  <div style="display:flex;align-items:center;gap:12px">
+  <div style="display:flex;align-items:center;gap:10px">
+    <button class="theme-switch" onclick="showView('settings')" title="Gérer les listes" style="font-size:16px">⚙</button>
     <button class="theme-switch" id="themeSwitch" onclick="toggleTheme()" title="Changer le thème">
       <span id="themeIcon">☀</span>
     </button>
@@ -49,6 +49,9 @@
       <div class="clock" id="clock">00:00</div>
       <div class="date" id="dateDisplay">—</div>
     </div>
+
+    <!-- Streak + last ping -->
+    <div class="home-meta" id="home-meta"></div>
 
     <div class="divider"></div>
 
@@ -79,10 +82,13 @@
       Prochain rappel dans <span id="nextPingCountdown">—</span>
     </div>
 
+    <!-- Last ping feedback -->
+    <div class="last-ping-card" id="lastPingCard" style="display:none"></div>
+
     <button class="btn-test" onclick="triggerPing()">⚡ Tester le ping</button>
   </div>
 
-  <!-- CAPTURE -->
+  <!-- CAPTURE — step 1: tags + moods -->
   <div class="view" id="view-capture">
     <div class="capture-header">
       <div class="capture-prompt">Où était ton esprit ?</div>
@@ -94,29 +100,26 @@
       <div class="tags-grid" id="tagsGrid"></div>
     </div>
 
-    <div class="quick-tags" id="mood-section">
+    <div class="quick-tags">
       <div class="tags-label">Mood</div>
       <div class="tags-grid" id="moodGrid"></div>
+      <div id="mood-intensity-panel"></div>
     </div>
 
-    <div class="intensity-section" id="intensity-section" style="display:none">
-      <div class="tags-label" id="intensity-label-text">Intensité</div>
-      <div class="intensity-row">
-        <button class="intensity-btn" data-i="1">1</button>
-        <button class="intensity-btn" data-i="2">2</button>
-        <button class="intensity-btn" data-i="3">3</button>
-        <button class="intensity-btn" data-i="4">4</button>
-        <button class="intensity-btn" data-i="5">5</button>
+    <!-- Details toggle -->
+    <div class="details-toggle" id="detailsToggle" onclick="toggleDetails()">
+      <span id="detailsToggleLabel">+ Ajouter des détails</span>
+    </div>
+
+    <!-- Details section (collapsed by default) -->
+    <div class="details-section" id="detailsSection" style="display:none">
+      <div class="optional-section">
+        <input type="text" id="lieuInput" placeholder="Lieu (optionnel)" class="optional-input" />
+        <input type="text" id="personneInput" placeholder="Avec / à propos de (optionnel)" class="optional-input" />
       </div>
-    </div>
-
-    <div class="optional-section">
-      <input type="text" id="lieuInput" placeholder="Lieu (optionnel)" class="optional-input" />
-      <input type="text" id="personneInput" placeholder="Avec / à propos de (optionnel)" class="optional-input" />
-    </div>
-
-    <div class="free-text-section">
-      <textarea id="freeText" placeholder="Précise, si tu veux…" rows="3"></textarea>
+      <div class="free-text-section">
+        <textarea id="freeText" placeholder="Précise, si tu veux…" rows="3"></textarea>
+      </div>
     </div>
 
     <div class="capture-actions">
@@ -132,31 +135,19 @@
       <button class="filter-tab" id="tab-week" onclick="setFilter('week')">Semaine</button>
       <button class="filter-tab" id="tab-month" onclick="setFilter('month')">Mois</button>
     </div>
-
     <div class="stats-row">
-      <div class="stat-box">
-        <div class="stat-num" id="statTotal">0</div>
-        <div class="stat-label">Pings</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-num" id="statAnswered">0</div>
-        <div class="stat-label">Réponses</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-num" id="statRate">—</div>
-        <div class="stat-label">Taux</div>
-      </div>
+      <div class="stat-box"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Pings</div></div>
+      <div class="stat-box"><div class="stat-num" id="statAnswered">0</div><div class="stat-label">Réponses</div></div>
+      <div class="stat-box"><div class="stat-num" id="statRate">—</div><div class="stat-label">Taux</div></div>
     </div>
-
     <div class="journal-header">
       <div class="journal-title" id="journalTitle">Aujourd'hui</div>
       <div class="journal-count" id="journalCount">0 entrées</div>
     </div>
-
     <div class="entries-list" id="entriesList"></div>
-
     <button class="btn-export" onclick="exportData()">↓ Exporter les données</button>
   </div>
+
   <!-- ANALYSE -->
   <div class="view" id="view-analyse">
     <div class="filter-tabs">
@@ -169,8 +160,10 @@
 
   <!-- SETTINGS -->
   <div class="view" id="view-settings">
-    <div class="settings-header">Gérer les listes</div>
-
+    <div class="settings-header">
+      <span>Gérer les listes</span>
+      <button class="settings-back-btn" onclick="showView('home')">← Retour</button>
+    </div>
     <div class="settings-section">
       <div class="settings-section-title">
         <span>Catégories de pensée</span>
@@ -178,7 +171,6 @@
       </div>
       <div id="thought-list"></div>
     </div>
-
     <div class="settings-section">
       <div class="settings-section-title">
         <span>Moods</span>
@@ -187,7 +179,6 @@
       <div id="mood-list"></div>
     </div>
   </div>
-
 </main>
 
 <nav id="mainNav">
@@ -202,10 +193,6 @@
   <button class="nav-btn" onclick="showView('analyse')" id="nav-analyse">
     <div class="nav-icon">◎</div>
     <div>Analyse</div>
-  </button>
-  <button class="nav-btn" onclick="showView('settings')" id="nav-settings">
-    <div class="nav-icon">⊹</div>
-    <div>Listes</div>
   </button>
 </nav>
 
@@ -236,32 +223,29 @@
   </div>
 </div>
 
-  <!-- ITEM EDIT MODAL -->
-  <div id="item-modal">
-    <div class="edit-sheet">
-      <h3 id="item-modal-title">Ajouter un élément</h3>
-
-      <div style="margin-bottom:20px">
-        <div class="tags-label" style="margin-bottom:10px">Emoji</div>
-        <div class="emoji-picker" id="emoji-picker"></div>
-        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
-          <span style="font-size:28px;min-width:36px;text-align:center" id="selected-emoji-preview">—</span>
-          <input type="text" id="custom-emoji-input" placeholder="Ou tape un emoji..." class="optional-input" style="flex:1;font-size:20px" maxlength="4" />
-        </div>
-      </div>
-
-      <div style="margin-bottom:20px">
-        <div class="tags-label" style="margin-bottom:10px">Nom</div>
-        <input type="text" id="item-name-input" placeholder="Nom…" class="optional-input" style="font-size:18px" />
-      </div>
-
-      <div class="edit-actions">
-        <button class="btn-skip" style="flex:1" onclick="closeItemModal()">Annuler</button>
-        <button class="btn-save" style="flex:2" onclick="saveItem()">Enregistrer</button>
+<!-- ITEM EDIT MODAL -->
+<div id="item-modal">
+  <div class="edit-sheet">
+    <h3 id="item-modal-title">Ajouter un élément</h3>
+    <div style="margin-bottom:20px">
+      <div class="tags-label" style="margin-bottom:10px">Emoji</div>
+      <div class="emoji-picker" id="emoji-picker"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+        <span style="font-size:28px;min-width:36px;text-align:center" id="selected-emoji-preview">—</span>
+        <input type="text" id="custom-emoji-input" placeholder="Ou tape un emoji..." class="optional-input" style="flex:1;font-size:20px" maxlength="4" />
       </div>
     </div>
+    <div style="margin-bottom:20px">
+      <div class="tags-label" style="margin-bottom:10px">Nom</div>
+      <input type="text" id="item-name-input" placeholder="Nom…" class="optional-input" style="font-size:18px" />
+    </div>
+    <div class="edit-actions">
+      <button class="btn-skip" style="flex:1" onclick="closeItemModal()">Annuler</button>
+      <button class="btn-save" style="flex:2" onclick="saveItem()">Enregistrer</button>
+    </div>
   </div>
+</div>
 
-  <script src="js/app.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
