@@ -1,160 +1,223 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Présence — Journal de soi</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Présence — interruptions aléatoires pour observer tes pensées">
+  <title>Présence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<div class="shell">
-
-  <!-- ── Sidebar ── -->
-  <aside class="sidebar">
-    <div class="logo">Présence</div>
-    <div class="logo-sub">Journal de soi</div>
-
-    <nav class="nav-section">
-      <div class="nav-label">Navigation</div>
-      <button class="nav-item active" data-view="ping">+ Nouveau ping</button>
-      <button class="nav-item" data-view="journal">Journal</button>
-      <button class="nav-item" data-view="analyse">Analyse</button>
-      <button class="nav-item" data-view="tags">Tags</button>
-    </nav>
-
-    <div class="nav-section timer-section">
-      <div class="nav-label">Timer aléatoire</div>
-      <div class="timer-status-line" id="timer-status">Inactif</div>
-      <div class="timer-next" id="timer-next"></div>
-      <select id="timer-interval" class="timer-select">
-        <option value="15">~15 min</option>
-        <option value="30" selected>~30 min</option>
-        <option value="60">~60 min</option>
-        <option value="90">~90 min</option>
-      </select>
-      <button class="timer-toggle" id="timer-toggle">Démarrer</button>
-    </div>
-
-    <div class="sidebar-footer" id="sidebar-stats"></div>
-  </aside>
-
-  <!-- ── Main ── -->
-  <main class="main">
-
-    <!-- NEW PING -->
-    <section id="view-ping" class="view active">
-      <div class="page-header">
-        <h1 class="page-title">Nouveau ping</h1>
-        <div class="page-date" id="current-datetime"></div>
-      </div>
-
-      <div class="ping-form">
-
-        <div class="form-row">
-          <label class="form-label">Ce qui t'occupe</label>
-          <textarea id="noteInput" rows="3" placeholder="Ce qui te traverse en ce moment..."></textarea>
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Tag de pensée</label>
-          <div class="tag-grid" id="tag-selector"></div>
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Mood</label>
-          <div class="mood-block">
-
-            <div class="mood-row">
-              <span class="mood-row-label">Valence</span>
-              <div class="valence-btns">
-                <button class="valence-btn" id="vbtn-pos" data-v="pos" title="Positif">+</button>
-                <button class="valence-btn" id="vbtn-neu" data-v="neu" title="Neutre">·</button>
-                <button class="valence-btn" id="vbtn-neg" data-v="neg" title="Négatif">−</button>
-              </div>
-              <span class="valence-label" id="valence-label"></span>
-            </div>
-
-            <div class="mood-row">
-              <span class="mood-row-label">Intensité</span>
-              <div class="intensity-row">
-                <button class="intensity-btn" id="ibtn-1" data-i="1">1</button>
-                <button class="intensity-btn" id="ibtn-2" data-i="2">2</button>
-                <button class="intensity-btn" id="ibtn-3" data-i="3">3</button>
-                <button class="intensity-btn" id="ibtn-4" data-i="4">4</button>
-                <button class="intensity-btn" id="ibtn-5" data-i="5">5</button>
-                <span class="intensity-label" id="intensity-label">— pas encore sélectionné</span>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <div class="form-row two-col">
-          <div>
-            <label class="form-label">Lieu <span class="optional">optionnel</span></label>
-            <input type="text" id="lieuInput" placeholder="Maison, bureau, café..." />
-          </div>
-          <div>
-            <label class="form-label">Avec / À propos de <span class="optional">optionnel</span></label>
-            <input type="text" id="personneInput" placeholder="Seul, avec Alex..." />
-          </div>
-        </div>
-
-        <div class="form-actions">
-          <button class="submit-btn" id="submitPing">Enregistrer →</button>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- JOURNAL -->
-    <section id="view-journal" class="view">
-      <div class="page-header">
-        <h1 class="page-title">Journal</h1>
-        <div class="page-date" id="journal-count"></div>
-      </div>
-      <div id="journal-feed"></div>
-    </section>
-
-    <!-- ANALYSE -->
-    <section id="view-analyse" class="view">
-      <div class="page-header">
-        <h1 class="page-title">Analyse</h1>
-        <div class="page-date">Basé sur tous tes pings</div>
-      </div>
-      <div id="analyse-content"></div>
-    </section>
-
-    <!-- TAGS -->
-    <section id="view-tags" class="view">
-      <div class="page-header">
-        <h1 class="page-title">Tags</h1>
-        <div class="page-date">Gère tes catégories de pensée</div>
-      </div>
-      <div class="tags-list" id="tags-list"></div>
-      <div class="new-tag-form">
-        <input type="text" id="newTagInput" placeholder="Nouveau tag..." />
-        <button id="createTagBtn">+ Créer</button>
-      </div>
-    </section>
-
-  </main>
-</div>
-
-<!-- Ping alert overlay -->
-<div class="ping-alert" id="ping-alert">
-  <div class="ping-alert-inner">
-    <div class="ping-alert-title">Ping !</div>
-    <div class="ping-alert-sub">C'est le moment de noter ce qui te traverse.</div>
-    <button class="ping-alert-btn" id="ping-alert-btn">Noter maintenant →</button>
+<!-- ONBOARDING -->
+<div id="view-onboarding" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:900;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;text-align:center">
+  <div class="title" style="font-size:32px;margin-bottom:12px">pré<span>sence</span></div>
+  <p style="color:var(--text-muted);font-size:15px;line-height:1.6;margin-bottom:48px;max-width:280px">Interruptions aléatoires pour observer tes pensées.</p>
+  <div style="width:100%;max-width:320px">
+    <div style="font-family:'DM Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;text-align:left">Ton prénom</div>
+    <input id="nameInput" type="text" placeholder="ex. Emile"
+      style="width:100%;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:2px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:18px;outline:none;caret-color:var(--accent);margin-bottom:16px"
+      onkeydown="if(event.key==='Enter') confirmName()">
+    <button onclick="confirmName()"
+      style="width:100%;padding:15px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--text);font-family:'DM Sans',sans-serif;font-size:17px;letter-spacing:0.08em;cursor:pointer;border-radius:2px">
+      Commencer →
+    </button>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<header>
+  <div style="display:flex;flex-direction:column;gap:2px">
+    <div class="title">pré<span>sence</span></div>
+    <div id="headerName" style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.15em;color:var(--text-muted);cursor:pointer" onclick="switchUser()"></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <button class="theme-switch" id="themeSwitch" onclick="toggleTheme()" title="Changer le thème">
+      <span id="themeIcon">☀</span>
+    </button>
+    <div class="status-dot" id="statusDot"></div>
+  </div>
+</header>
 
-<script src="js/app.js"></script>
+<main>
+  <!-- HOME -->
+  <div class="view active" id="view-home">
+    <div class="clock-section">
+      <div class="clock" id="clock">00:00</div>
+      <div class="date" id="dateDisplay">—</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="config-card">
+      <div class="config-label">Intervalle de rappel</div>
+      <div class="interval-row">
+        <div class="interval-label">Toutes les</div>
+        <div class="interval-controls">
+          <button class="btn-icon" onclick="changeInterval(-5)">−</button>
+          <div class="interval-value" id="intervalDisplay">20</div>
+          <button class="btn-icon" onclick="changeInterval(+5)">+</button>
+        </div>
+        <div style="color:var(--text-muted);font-size:14px;">min</div>
+      </div>
+      <div class="variance-row">
+        <div class="toggle" id="varianceToggle" onclick="toggleVariance()"></div>
+        <div>Aléatoire (±50%)</div>
+      </div>
+    </div>
+
+    <div id="notifBannerContainer"></div>
+
+    <button class="btn-main btn-start" id="mainBtn" onclick="toggleSession()">
+      Commencer la session
+    </button>
+
+    <div class="next-ping" id="nextPingInfo" style="display:none">
+      Prochain rappel dans <span id="nextPingCountdown">—</span>
+    </div>
+
+    <button class="btn-test" onclick="triggerPing()">⚡ Tester le ping</button>
+  </div>
+
+  <!-- CAPTURE -->
+  <div class="view" id="view-capture">
+    <div class="capture-header">
+      <div class="capture-prompt">Où était ton esprit ?</div>
+      <div class="capture-time" id="captureTime">—</div>
+    </div>
+
+    <div class="quick-tags">
+      <div class="tags-label">Ce qui occupait mes pensées</div>
+      <div class="tags-grid" id="tagsGrid">
+        <!-- generated by JS -->
+      </div>
+    </div>
+
+    <div class="free-text-section">
+      <textarea id="freeText" placeholder="Précise, si tu veux…" rows="3"></textarea>
+    </div>
+
+    <div class="mood-section">
+      <div class="mood-block">
+        <div class="tags-label">Valence</div>
+        <div class="valence-row">
+          <button class="valence-btn" id="vbtn-pos" data-v="pos">+ Positif</button>
+          <button class="valence-btn" id="vbtn-neu" data-v="neu">· Neutre</button>
+          <button class="valence-btn" id="vbtn-neg" data-v="neg">− Négatif</button>
+        </div>
+      </div>
+      <div class="mood-block">
+        <div class="tags-label">Intensité</div>
+        <div class="intensity-row">
+          <button class="intensity-btn" data-i="1">1</button>
+          <button class="intensity-btn" data-i="2">2</button>
+          <button class="intensity-btn" data-i="3">3</button>
+          <button class="intensity-btn" data-i="4">4</button>
+          <button class="intensity-btn" data-i="5">5</button>
+          <span class="intensity-hint" id="intensity-hint"></span>
+        </div>
+      </div>
+      <div class="optional-fields">
+        <input type="text" id="lieuInput" placeholder="Lieu (optionnel)" class="optional-input" />
+        <input type="text" id="personneInput" placeholder="Avec / à propos de (optionnel)" class="optional-input" />
+      </div>
+    </div>
+
+    <div class="capture-actions">
+      <button class="btn-skip" onclick="skipEntry()">Passer</button>
+      <button class="btn-save" onclick="saveEntry()">Enregistrer</button>
+    </div>
+  </div>
+
+  <!-- JOURNAL -->
+  <div class="view" id="view-journal">
+    <div class="filter-tabs">
+      <button class="filter-tab active" id="tab-day" onclick="setFilter('day')">Jour</button>
+      <button class="filter-tab" id="tab-week" onclick="setFilter('week')">Semaine</button>
+      <button class="filter-tab" id="tab-month" onclick="setFilter('month')">Mois</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-num" id="statTotal">0</div>
+        <div class="stat-label">Pings</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="statAnswered">0</div>
+        <div class="stat-label">Réponses</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="statRate">—</div>
+        <div class="stat-label">Taux</div>
+      </div>
+    </div>
+
+    <div class="journal-header">
+      <div class="journal-title" id="journalTitle">Aujourd'hui</div>
+      <div class="journal-count" id="journalCount">0 entrées</div>
+    </div>
+
+    <div class="entries-list" id="entriesList"></div>
+
+    <button class="btn-export" onclick="exportData()">↓ Exporter les données</button>
+  </div>
+  <!-- ANALYSE -->
+  <div class="view" id="view-analyse">
+    <div class="filter-tabs">
+      <button class="filter-tab active" id="atab-day" onclick="setAnalyseFilter('day')">Jour</button>
+      <button class="filter-tab" id="atab-week" onclick="setAnalyseFilter('week')">Semaine</button>
+      <button class="filter-tab" id="atab-month" onclick="setAnalyseFilter('month')">Mois</button>
+    </div>
+    <div id="analyse-content" style="flex:1;overflow-y:auto;padding:0 0 24px"></div>
+  </div>
+
+</main>
+
+<nav id="mainNav">
+  <button class="nav-btn active" onclick="showView('home')" id="nav-home">
+    <div class="nav-icon">◉</div>
+    <div>Session</div>
+  </button>
+  <button class="nav-btn" onclick="showView('journal')" id="nav-journal">
+    <div class="nav-icon">≡</div>
+    <div>Journal</div>
+  </button>
+  <button class="nav-btn" onclick="showView('analyse')" id="nav-analyse">
+    <div class="nav-icon">◎</div>
+    <div>Analyse</div>
+  </button>
+</nav>
+
+<!-- EDIT MODAL -->
+<div id="edit-modal">
+  <div class="edit-sheet">
+    <h3>Modifier l'entrée</h3>
+    <div class="edit-tags-grid" id="editTagsGrid"></div>
+    <textarea id="editText" rows="3" placeholder="Note libre…"></textarea>
+    <div class="edit-actions">
+      <button class="btn-skip" style="flex:1" onclick="closeEdit()">Annuler</button>
+      <button class="btn-save" style="flex:2" onclick="saveEdit()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- FLASH OVERLAY -->
+<div id="flash-overlay"></div>
+
+<!-- PING OVERLAY -->
+<div id="ping-overlay">
+  <div class="ping-card">
+    <div class="ping-symbol">🔔</div>
+    <div class="ping-message">Moment de présence</div>
+    <div class="ping-sub">Qu'est-ce qui occupait ton esprit<br>à cet instant précis ?</div>
+    <button class="btn-respond" onclick="respondToPing()">Noter mes pensées</button>
+    <button class="btn-dismiss" onclick="dismissPing()">Ignorer ce ping</button>
+  </div>
+</div>
+
+  <script src="js/app.js"></script>
 </body>
 </html>
