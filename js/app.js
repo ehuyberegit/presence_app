@@ -209,7 +209,7 @@ async function startSession() {
   const sub = await getOrCreatePushSubscription();
   if (sub) {
     try {
-      await fetch(SERVER_URL + '/session/start', {
+      const res = await fetch(SERVER_URL + '/session/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -219,10 +219,15 @@ async function startSession() {
           variance: state.variance,
         }),
       });
-      // Le serveur gère les pings — on affiche juste le compte à rebours localement
+      const data = await res.json();
+      // Initialiser le compte à rebours avec le délai retourné par le serveur
+      const nextInMs = (data.nextPingIn || state.intervalMin * 60) * 1000;
+      state.nextPingAt = Date.now() + nextInMs;
       startCountdown();
       return;
-    } catch {}
+    } catch (err) {
+      console.warn('Serveur push injoignable, fallback local :', err);
+    }
   }
 
   // Fallback : pings locaux (pas de notifications en fond)
@@ -255,6 +260,10 @@ function restartTimer() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: currentUser, intervalMin: state.intervalMin, variance: state.variance }),
     }).catch(() => {});
+    // Estimer localement le prochain ping pour le compte à rebours
+    let ms = state.intervalMin * 60 * 1000;
+    if (state.variance) ms = Math.round(ms * (0.5 + Math.random()));
+    state.nextPingAt = Date.now() + ms;
     startCountdown();
   } else {
     schedulePing();
