@@ -1,5 +1,9 @@
 'use strict';
 
+// ── SERVER URL ────────────────────────────────────────────────────────────
+// Le serveur Node tourne sur la même origine (il sert aussi les fichiers statiques)
+const SERVER_URL = window.location.origin;
+
 // ── DEFAULT DATA ──────────────────────────────────────────────────────────
 
 const DEFAULT_THOUGHTS = [
@@ -53,6 +57,9 @@ const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
 // ── STATE ─────────────────────────────────────────────────────────────────
 
 let currentUser = null;
+let swRegistration = null;
+let pushSubscription = null;
+
 let state = {
   running: false,
   intervalMin: 20,
@@ -191,12 +198,34 @@ function toggleVariance() {
 
 function toggleSession() { if (state.running) stopSession(); else startSession(); }
 
-function startSession() {
+async function startSession() {
   state.running = true;
   document.getElementById('mainBtn').className = 'btn-main btn-stop';
   document.getElementById('mainBtn').textContent = 'Arrêter la session';
   document.getElementById('statusDot').classList.add('active');
   document.getElementById('nextPingInfo').style.display = 'block';
+
+  // Essayer de déléguer au serveur push
+  const sub = await getOrCreatePushSubscription();
+  if (sub) {
+    try {
+      await fetch(SERVER_URL + '/session/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser,
+          subscription: sub.toJSON(),
+          intervalMin: state.intervalMin,
+          variance: state.variance,
+        }),
+      });
+      // Le serveur gère les pings — on affiche juste le compte à rebours localement
+      startCountdown();
+      return;
+    } catch {}
+  }
+
+  // Fallback : pings locaux (pas de notifications en fond)
   schedulePing();
 }
 
@@ -208,9 +237,29 @@ function stopSession() {
   document.getElementById('mainBtn').textContent = 'Commencer la session';
   document.getElementById('statusDot').classList.remove('active');
   document.getElementById('nextPingInfo').style.display = 'none';
+
+  if (pushSubscription) {
+    fetch(SERVER_URL + '/session/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser }),
+    }).catch(() => {});
+  }
 }
 
-function restartTimer() { clearTimeout(state.pingTimer); clearInterval(state.countdownTimer); schedulePing(); }
+function restartTimer() {
+  clearTimeout(state.pingTimer); clearInterval(state.countdownTimer);
+  if (pushSubscription) {
+    fetch(SERVER_URL + '/session/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser, intervalMin: state.intervalMin, variance: state.variance }),
+    }).catch(() => {});
+    startCountdown();
+  } else {
+    schedulePing();
+  }
+}
 
 function schedulePing() {
   let ms = state.intervalMin * 60 * 1000;
@@ -233,16 +282,24 @@ function startCountdown() {
 
 // ── PING ──────────────────────────────────────────────────────────────────
 
+// triggerPing : appelé par le bouton test ou le fallback local
 function triggerPing() {
-  saveEntries();
   state.currentPingTime = new Date();
-  try {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      const notif = new Notification('🔔 Présence — Moment de conscience', { body: "Qu'est-ce qui occupait ton esprit à cet instant ?", requireInteraction: false });
-      notif.onclick = () => { window.focus(); notif.close(); document.getElementById('ping-overlay').classList.add('show'); };
-      setTimeout(() => { try { notif.close(); } catch {} }, 8000);
-    }
-  } catch {}
+  // Si le serveur push est actif, lui déléguer l'envoi (et ne pas planifier localement)
+  if (pushSubscription && state.running) {
+    fetch(SERVER_URL + '/ping-now', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser }),
+    }).catch(() => {});
+  }
+  triggerPingLocal();
+}
+
+// Effet local du ping (overlay, son, flash) — appelé aussi depuis le SW message
+function triggerPingLocal() {
+  saveEntries();
+  if (!state.currentPingTime) state.currentPingTime = new Date();
   try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch {}
   try { flashScreen(); } catch {}
   try { blinkTitle(); } catch {}
@@ -915,10 +972,72 @@ function checkNotifPermission() {
   const c = document.getElementById('notifBannerContainer');
   if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') { c.innerHTML = ''; return; }
-  if (Notification.permission === 'denied')  { c.innerHTML = `<div class="notif-banner"><span>🔕</span> Notifications bloquées.</div>`; return; }
+  if (Notification.permission === 'denied')  { c.innerHTML = `<div class="notif-banner"><span>🔕</span> Notifications bloquées — autorise-les dans les réglages.</div>`; return; }
   c.innerHTML = `<div class="notif-banner" onclick="requestNotif()"><span>🔔</span> Autoriser les notifications</div>`;
 }
-function requestNotif() { Notification.requestPermission().then(checkNotifPermission); }
+async function requestNotif() {
+  await Notification.requestPermission();
+  checkNotifPermission();
+}
+
+// ── SERVICE WORKER & PUSH ─────────────────────────────────────────────────
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    swRegistration = await navigator.serviceWorker.register('/sw.js');
+
+    // Écouter les messages du SW (ping reçu quand l'app est ouverte)
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data?.type === 'PING') {
+        state.currentPingTime = new Date(event.data.time || Date.now());
+        triggerPingLocal();
+      }
+    });
+  } catch (err) {
+    console.warn('Service Worker non disponible :', err);
+  }
+}
+
+async function getOrCreatePushSubscription() {
+  if (!swRegistration) return null;
+  if (!('PushManager' in window)) return null;
+
+  try {
+    // Vérifier un abonnement existant
+    let sub = await swRegistration.pushManager.getSubscription();
+    if (sub) { pushSubscription = sub; return sub; }
+
+    // Demander l'autorisation si nécessaire
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return null;
+
+    // Récupérer la clé publique VAPID du serveur
+    const res = await fetch(SERVER_URL + '/vapid-public-key');
+    if (!res.ok) return null;
+    const { publicKey } = await res.json();
+
+    sub = await swRegistration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+    pushSubscription = sub;
+    checkNotifPermission();
+    return sub;
+  } catch (err) {
+    console.warn('Push subscription impossible :', err);
+    return null;
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) output[i] = rawData.charCodeAt(i);
+  return output;
+}
 
 // ── THEME ─────────────────────────────────────────────────────────────────
 
@@ -971,7 +1090,21 @@ function startApp() {
   document.getElementById('varianceToggle').classList.toggle('on', state.variance);
   updateJournal();
   updateHomeMeta();
-  checkNotifPermission();
+  registerServiceWorker().then(checkNotifPermission);
+  checkPingFromUrl();
+}
+
+// Quand l'app est ouverte depuis un tap sur la notification push
+function checkPingFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const pingTs = params.get('ping');
+  if (!pingTs) return;
+  history.replaceState({}, '', '/');
+  state.currentPingTime = new Date(Number(pingTs) || Date.now());
+  // Attendre que le DOM soit prêt
+  setTimeout(() => {
+    document.getElementById('ping-overlay').classList.add('show');
+  }, 300);
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────
